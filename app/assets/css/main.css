@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Biến theo không gian chùa (được TempleThemeSwitcher cập nhật) */
+  --accent: 201 163 86;      /* vàng đồng */
+  --deep: 139 46 46;         /* đỏ trầm */
+  --paper: 245 239 224;      /* be/kem */
+  --wood: 74 55 40;          /* nâu gỗ */
+}
+
+@layer base {
+  body {
+    @apply bg-kem text-go font-sans antialiased;
+    background-image:
+      radial-gradient(120% 80% at 50% -10%, rgba(201, 163, 86, 0.18), transparent 55%),
+      radial-gradient(80% 60% at 50% 120%, rgba(139, 46, 46, 0.08), transparent 60%);
+    background-attachment: fixed;
+  }
+  h1, h2, h3, .font-title {
+    @apply font-serif;
+    letter-spacing: 0.01em;
+  }
+  ::selection { background: rgba(201, 163, 86, 0.35); }
+}
+
+@layer components {
+  .container-zen { @apply mx-auto w-full max-w-6xl px-5 sm:px-8; }
+
+  .glow-icon {
+    filter: drop-shadow(0 0 14px rgba(var(--accent), 0.55));
+  }
+
+  .card-zen {
+    @apply rounded-2xl border border-dong/30 bg-kem/70 backdrop-blur-sm shadow-soft;
+  }
+
+  .btn-zen {
+    @apply inline-flex items-center justify-center gap-2 rounded-full
+           bg-do px-7 py-3 font-sans text-sm font-medium tracking-wide text-kem
+           shadow-glow transition-all duration-500 ease-in-out
+           hover:bg-do-light hover:shadow-glow-lg hover:-translate-y-0.5;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-full
+           border border-dong/50 px-6 py-3 font-sans text-sm text-go
+           transition-all duration-500 ease-in-out hover:bg-dong/10;
+  }
+
+  .heading-serif { @apply font-serif text-do; }
+  .eyebrow {
+    @apply font-sans text-xs uppercase tracking-[0.35em] text-dong;
+  }
+}
+
+/* ------- Chuyển trang & xuất hiện êm dịu ------- */
+.page-fade-enter-active,
+.page-fade-leave-active {
+  transition: opacity 0.6s ease-in-out, transform 0.6s ease-in-out;
+}
+.page-fade-enter-from { opacity: 0; transform: translateY(12px); }
+.page-fade-leave-to { opacity: 0; transform: translateY(-8px); }
+
+/* Fade dùng chung cho modal/thẻ */
+.soft-enter-active, .soft-leave-active {
+  transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+}
+.soft-enter-from, .soft-leave-to { opacity: 0; transform: translateY(10px) scale(0.98); }
+
+/* Tôn trọng người dùng tắt hiệu ứng */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
