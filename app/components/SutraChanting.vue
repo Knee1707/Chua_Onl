@@ -162,7 +162,7 @@ onBeforeUnmount(() => {
           </g>
         </svg>
 
-        <button class="btn-zen w-40" @click="toggle">
+        <button class="btn-zen w-44" @click="toggle">
           <span>{{ playing ? '⏸' : '▶' }}</span>{{ playing ? 'Tạm dừng' : 'Bắt đầu tụng' }}
         </button>
 

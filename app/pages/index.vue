@@ -36,33 +36,12 @@
       <div class="absolute left-1/2 top-24 h-72 w-72 -translate-x-1/2 rounded-full bg-dong/20 blur-3xl animate-breathe" />
     </div>
 
-    <!-- Nội dung Hero -->
-    <div class="container-zen flex min-h-screen flex-col items-center justify-center text-center">
-      <div class="animate-fade-up">
-        <div class="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full border border-dong/40 bg-kem/50 text-4xl glow-icon animate-breathe">
-          ☸
-        </div>
-        <p class="eyebrow mb-3">Nam Mô A Di Đà Phật</p>
-        <h1 class="text-5xl leading-tight text-do sm:text-7xl">Đi Chùa Online</h1>
-        <p class="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-go/75">
-          Một chốn thiền tịnh giữa đời sống hối hả — thắp nén tâm hương,
-          thỉnh một tiếng chuông, gửi lời cầu an và xin một quẻ đầu năm.
-        </p>
-
-        <div class="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <NuxtLink to="/chua" class="btn-zen text-base">
-            <span>🪷</span> Bước vào chùa
-          </NuxtLink>
-          <a href="#gioi-thieu" class="btn-ghost">Tìm hiểu thêm</a>
-        </div>
-      </div>
-
-      <LotusDivider class="mt-16 w-full max-w-md" />
-      <p class="mt-3 text-sm text-go/50">Ghé thùng công đức nơi cổng chùa trước khi bước vào</p>
-    </div>
-
-    <!-- Thùng công đức nơi cổng chùa -->
-    <section id="cong-duc" class="container-zen pb-8 pt-4">
+    <!-- Thùng công đức nơi cổng chùa (đưa lên trên cùng) -->
+    <section id="cong-duc" class="container-zen pb-8 pt-16">
+      <p class="mx-auto mb-10 max-w-2xl text-center text-lg leading-relaxed text-go/75 animate-fade-up">
+        Một chốn thiền tịnh giữa đời sống hối hả — thắp nén tâm hương,
+        thỉnh một tiếng chuông, gửi lời cầu an và xin một quẻ đầu năm.
+      </p>
       <div class="mx-auto max-w-4xl">
         <MeritBox />
         <div class="mt-8 text-center">

@@ -2,17 +2,18 @@
 import { ref, onMounted } from 'vue'
 import { solarToLunar, canChiYear, daysUntilLunar, type LunarDate } from '~/composables/useLunar'
 
-const today = new Date()
 const lunar = ref<LunarDate | null>(null)
 const canChi = ref('')
 const toMung1 = ref(0)
 const toRam = ref(0)
+const solarStr = ref('')
 
-const solarStr = today.toLocaleDateString('vi-VN', {
-  weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric'
-})
-
+// Tính toàn bộ ở client để tránh lệch múi giờ giữa server/client (hydration)
 onMounted(() => {
+  const today = new Date()
+  solarStr.value = today.toLocaleDateString('vi-VN', {
+    weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric'
+  })
   const l = solarToLunar(today.getDate(), today.getMonth() + 1, today.getFullYear())
   lunar.value = l
   canChi.value = canChiYear(l.year)
