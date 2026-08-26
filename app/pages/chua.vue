@@ -45,9 +45,12 @@ const { current } = useTempleTheme()
         <SutraChanting />
       </div>
 
-      <!-- Xin xăm -->
+      <!-- Xin xăm + Xin keo -->
       <div class="mt-6">
         <FortuneStick />
+      </div>
+      <div class="mt-6">
+        <KeoDivination />
       </div>
 
       <!-- Cầu an -->
@@ -60,5 +63,10 @@ const { current } = useTempleTheme()
         🙏 Nguyện đem công đức này, hướng về khắp tất cả, đệ tử và chúng sinh, đều trọn thành Phật đạo.
       </p>
     </div>
+
+    <!-- Nhạc nền thiền (nút nổi) -->
+    <ClientOnly>
+      <MusicToggle />
+    </ClientOnly>
   </main>
 </template>
