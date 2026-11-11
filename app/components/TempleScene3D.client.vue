@@ -169,7 +169,7 @@ function removeSandalsAndEnter() {
   hit.position.set(spot.x, spot.y + 0.7, spot.z); world.root.add(hit)
   world.interactives.push({ object: hit, action: 'sandals', label: '👡 Mang dép', focus: spot.clone() })
   phase.value = 'inside'
-  avatarPos.set(0, world.floorY, -12); avatarYaw = Math.PI
+  avatarPos.set(0, world.floorY, -4); avatarYaw = Math.PI
   cam.yaw = 0; cam.pitch = 0.28
 }
 
@@ -428,38 +428,42 @@ function startScene() {
     bare: sandalsOff.value
   }))
 
-  // đèn ấm dịu trong đại điện (giảm mạnh để hết cháy trần)
-  for (const lz of [-28, -38]) {
-    const hl = new THREE.PointLight(0xffe0b0, 26, 44, 1.4)
-    hl.position.set(0, world.floorY + 5.5, lz)
+  // đèn ấm dịu trong đại điện lớn (nhiều đèn phủ rộng, không cháy trần)
+  for (const lz of [-26, -38, -50]) {
+    const hl = new THREE.PointLight(0xffe0b0, 30, 52, 1.4)
+    hl.position.set(0, world.floorY + 6, lz)
     scene.add(hl)
   }
-  const yardLight = new THREE.PointLight(0xffe8c0, 14, 40, 1.5)
-  yardLight.position.set(0, world.floorY + 7, 6)
+  for (const lx of [-18, 18]) {
+    const hl = new THREE.PointLight(0xffe0b0, 18, 42, 1.4)
+    hl.position.set(lx, world.floorY + 6, -34)
+    scene.add(hl)
+  }
+  const yardLight = new THREE.PointLight(0xffe8c0, 16, 44, 1.5)
+  yardLight.position.set(0, world.floorY + 7, 10)
   scene.add(yardLight)
 
   // đường hành hương: cầu thang -> qua cổng -> sân -> thềm đại điện
   const fy = world.floorY + 1.7
   fullPath = [
     ...world.climbPath,
-    new THREE.Vector3(0, fy, 50), // lên tới mép đỉnh, băng qua bãi cỏ
-    new THREE.Vector3(0, fy, 36),
-    new THREE.Vector3(0, fy, 26),
-    new THREE.Vector3(0, fy, 14),
-    new THREE.Vector3(0, fy, 6),
-    new THREE.Vector3(4, fy, -4),
-    new THREE.Vector3(8, fy, -12)
+    new THREE.Vector3(0, fy, 54), // băng bãi cỏ tới cổng
+    new THREE.Vector3(0, fy, 44), // qua cổng tam quan
+    new THREE.Vector3(0, fy, 28), // sân cột kinh
+    new THREE.Vector3(0, fy, 12),
+    new THREE.Vector3(0, fy, 0),
+    new THREE.Vector3(8, fy, -6)  // tới thềm đại điện
   ]
 
   // nhân vật đứng dưới chân núi; camera ngắm toàn cảnh chùa trên đỉnh núi
-  avatarPos.set(0, -9, 88); avatarYaw = Math.PI; placeAvatar()
-  camera.position.set(0, 24, 126)
-  camera.lookAt(0, world.floorY - 2, -10)
+  avatarPos.set(0, -9, 94); avatarYaw = Math.PI; placeAvatar()
+  camera.position.set(0, 28, 136)
+  camera.lookAt(0, world.floorY - 2, -14)
 
   // lối tắt dev: .../hanh-huong#inside vào thẳng trong chùa
   if (import.meta.dev && location.hash === '#inside') {
     phase.value = 'inside'; sandalsOff.value = true
-    avatarPos.set(0, world.floorY, -10); avatarYaw = Math.PI
+    avatarPos.set(0, world.floorY, -4); avatarYaw = Math.PI
     cam.yaw = 0; cam.pitch = 0.3
   }
 
