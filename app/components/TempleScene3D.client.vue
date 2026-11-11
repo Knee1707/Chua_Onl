@@ -2,8 +2,14 @@
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { buildWorld, makeSandalPair, type World } from '~/three/world'
+import { useMultiplayer } from '~/composables/useMultiplayer'
 
 const emit = defineEmits<{ (e: 'interact', action: string): void }>()
+
+const mp = useMultiplayer()
+const online = mp.online
+interface RemoteAvatar { group: THREE.Group; legL: THREE.Group; legR: THREE.Group; label: THREE.Sprite; walkPhase: number }
+const remotes = new Map<string, RemoteAvatar>()
 
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 const phase = ref<'intro' | 'climbing' | 'threshold' | 'inside'>('intro')
@@ -37,10 +43,10 @@ let fullPath: THREE.Vector3[] = []
 let climbT = 0
 let sandalPair: THREE.Group | null = null
 
-function buildAvatar() {
+function buildAvatar(robeColor = 0x5f6f82) {
   const g = new THREE.Group()
-  const robe = new THREE.MeshStandardMaterial({ color: 0x5f6f82, roughness: 0.85 })      // áo tràng lam
-  const robe2 = new THREE.MeshStandardMaterial({ color: 0x4e5c6d, roughness: 0.85 })
+  const robe = new THREE.MeshStandardMaterial({ color: robeColor, roughness: 0.85 })      // áo tràng
+  const robe2 = new THREE.MeshStandardMaterial({ color: new THREE.Color(robeColor).multiplyScalar(0.82), roughness: 0.85 })
   const skin = new THREE.MeshStandardMaterial({ color: 0xe8c39e, roughness: 0.7 })
   const sashM = new THREE.MeshStandardMaterial({ color: 0xd9b24a, roughness: 0.6, metalness: 0.2 })
   const legM = new THREE.MeshStandardMaterial({ color: 0x3a3330, roughness: 1 })
@@ -55,9 +61,30 @@ function buildAvatar() {
     const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.8, 8), robe); arm.position.set(s * 0.28, 1.5, 0.28); arm.rotation.z = s * 0.4; arm.rotation.x = -0.9; g.add(arm)
   }
   const mkLeg = (sx: number) => { const p = new THREE.Group(); p.position.set(sx, 0.78, 0); const l = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.1, 0.78, 8), legM); l.position.y = -0.39; l.castShadow = true; p.add(l); return p }
-  legL = mkLeg(-0.17); legR = mkLeg(0.17)
-  g.add(body, skirt, shoulders, sash, head, hair, hands, legL, legR)
-  return g
+  const _legL = mkLeg(-0.17), _legR = mkLeg(0.17)
+  g.add(body, skirt, shoulders, sash, head, hair, hands, _legL, _legR)
+  return { group: g, legL: _legL, legR: _legR }
+}
+
+// thẻ tên nổi trên đầu người chơi khác
+function makeNameTag(text: string) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64
+  const ctx = c.getContext('2d')!
+  ctx.fillStyle = 'rgba(40,26,16,0.8)'
+  const w = 256, h = 64, r = 18
+  ctx.beginPath(); ctx.moveTo(r, 4); ctx.arcTo(w - 4, 4, w - 4, h - 4, r); ctx.arcTo(w - 4, h - 4, 4, h - 4, r)
+  ctx.arcTo(4, h - 4, 4, 4, r); ctx.arcTo(4, 4, w - 4, 4, r); ctx.closePath(); ctx.fill()
+  ctx.font = 'bold 34px "Segoe UI", sans-serif'; ctx.fillStyle = '#f3e6c4'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  ctx.fillText((text || 'Khách').slice(0, 14), w / 2, h / 2 + 2)
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }))
+  sp.scale.set(2.6, 0.65, 1); sp.position.y = 2.9
+  return sp
+}
+function colorFromId(id: string) {
+  let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) & 0xffff
+  const palette = [0x8a5a3a, 0x4e7a5a, 0x7a4e6d, 0x3a5f7a, 0x7a6a3a, 0x6a4e8a, 0x8a4a4a]
+  return palette[h % palette.length]
 }
 
 function placeAvatar() { avatar.position.set(avatarPos.x, avatarPos.y, avatarPos.z); avatar.rotation.y = avatarYaw }
@@ -65,6 +92,40 @@ function animateLegs() {
   const swing = Math.sin(walkPhase) * 0.5 * walkAmt
   legL.rotation.x = swing; legR.rotation.x = -swing
   avatar.position.y = avatarPos.y + Math.abs(Math.sin(walkPhase)) * 0.06 * walkAmt
+}
+
+// Hiển thị & đồng bộ người chơi khác
+function syncRemotes(dt: number) {
+  const seen = new Set<string>()
+  const k = Math.min(1, dt * 10)
+  for (const id in mp.players) {
+    const p = mp.players[id]; seen.add(id)
+    let r = remotes.get(id)
+    if (!r) {
+      const a = buildAvatar(colorFromId(id))
+      const label = makeNameTag(p.name)
+      a.group.add(label)
+      scene.add(a.group)
+      r = { group: a.group, legL: a.legL, legR: a.legR, label, walkPhase: 0 }
+      remotes.set(id, r)
+    }
+    p.x += (p.tx - p.x) * k; p.y += (p.ty - p.y) * k; p.z += (p.tz - p.z) * k
+    let dyaw = p.tyaw - p.yaw; while (dyaw > Math.PI) dyaw -= Math.PI * 2; while (dyaw < -Math.PI) dyaw += Math.PI * 2
+    p.yaw += dyaw * k
+    r.group.position.set(p.x, p.y, p.z)
+    r.group.rotation.y = p.yaw
+    if (p.st === 2) { // quỳ
+      r.legL.rotation.x = -1.5; r.legR.rotation.x = -1.5; r.group.position.y = p.y - 0.5
+    } else if (p.st === 1) { // đi
+      r.walkPhase += dt * 10
+      const sw = Math.sin(r.walkPhase) * 0.5
+      r.legL.rotation.x = sw; r.legR.rotation.x = -sw
+      r.group.position.y = p.y + Math.abs(Math.sin(r.walkPhase)) * 0.06
+    } else { r.legL.rotation.x = 0; r.legR.rotation.x = 0 }
+  }
+  for (const [id, r] of remotes) {
+    if (!seen.has(id)) { scene.remove(r.group); remotes.delete(id) }
+  }
 }
 function updateCamera(lerpK = 1) {
   const off = new THREE.Vector3(Math.sin(cam.yaw) * Math.cos(cam.pitch), Math.sin(cam.pitch), Math.cos(cam.yaw) * Math.cos(cam.pitch)).multiplyScalar(cam.dist)
@@ -214,6 +275,7 @@ function animate() {
     placeAvatar() // intro: giữ camera điện ảnh
   }
 
+  syncRemotes(dt) // người chơi khác
   renderer.render(scene, camera)
 }
 
@@ -308,7 +370,13 @@ function startScene() {
   scene.add(new THREE.AmbientLight(0xffffff, 0.42))
 
   world = buildWorld(scene)
-  avatar = buildAvatar(); scene.add(avatar)
+  const la = buildAvatar(0x5f6f82); avatar = la.group; legL = la.legL; legR = la.legR; scene.add(avatar)
+
+  // --- Multiplayer: kết nối & phát vị trí của mình ---
+  mp.connect(() => ({
+    x: avatarPos.x, y: avatarPos.y, z: avatarPos.z, yaw: avatarYaw,
+    st: sitting.value ? 2 : (walkAmt > 0.35 ? 1 : 0)
+  }))
 
   // đèn ấm dịu trong đại điện (giảm mạnh để hết cháy trần)
   for (const lz of [-28, -38]) {
@@ -359,6 +427,7 @@ onMounted(startScene)
 onBeforeUnmount(() => {
   cancelAnimationFrame(raf)
   window.removeEventListener('resize', onResize)
+  mp.disconnect()
   renderer?.dispose()
 })
 
@@ -368,6 +437,9 @@ defineExpose({ phase })
 <template>
   <div class="scene-wrap" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="onPointerUp" @pointerleave="onPointerUp">
     <canvas ref="canvasEl" class="scene-canvas" @click="onClick" />
+
+    <!-- số người online -->
+    <div class="online-badge"><span class="dot" /> {{ online }} người đang ở chùa</div>
 
     <!-- Lớp phủ: Mở đầu -->
     <transition name="fade">
@@ -462,6 +534,13 @@ defineExpose({ phase })
   font-size: .82rem; z-index: 6; pointer-events: none; backdrop-filter: blur(6px);
 }
 .controls-hint b { color: #c9a356; }
+.online-badge {
+  position: absolute; top: 16px; right: 16px; z-index: 8;
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(40,26,16,.6); color: #f5efe0; padding: 7px 14px; border-radius: 999px;
+  border: 1px solid rgba(201,163,86,.4); backdrop-filter: blur(6px); font-size: .85rem;
+}
+.online-badge .dot { width: 9px; height: 9px; border-radius: 50%; background: #5bd66e; box-shadow: 0 0 8px #5bd66e; }
 .toast {
   position: absolute; left: 50%; top: 14%; transform: translateX(-50%);
   background: rgba(40,26,16,.85); color: #f3e6c4; padding: 10px 22px; border-radius: 999px;
