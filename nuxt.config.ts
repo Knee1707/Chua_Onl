@@ -3,7 +3,12 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-01-01',
   devtools: { enabled: false },
 
-  modules: ['@nuxtjs/tailwindcss'],
+  modules: ['@nuxtjs/tailwindcss', '@tresjs/nuxt'],
+
+  // Trang 3D WebGL: render phía client (không SSR) — tránh lỗi SSR & nhanh hơn
+  routeRules: {
+    '/hanh-huong': { ssr: false }
+  },
 
   css: ['~/assets/css/main.css'],
 

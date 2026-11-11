@@ -45,8 +45,11 @@
       <div class="mx-auto max-w-4xl">
         <MeritBox />
         <div class="mt-8 text-center">
-          <NuxtLink to="/chua" class="btn-zen text-base">
-            <span>🪷</span> Thành tâm rồi, vào chùa
+          <NuxtLink to="/hanh-huong" class="btn-zen text-base">
+            <span>🏔️</span> Hành hương 3D — leo núi vào chùa
+          </NuxtLink>
+          <NuxtLink to="/chua" class="btn-zen text-base ml-2 opacity-80">
+            <span>🪷</span> Vào chùa (bản cũ)
           </NuxtLink>
           <p class="mt-3 text-xs text-go/50">Cúng dường tùy tâm, không bắt buộc — bạn có thể vào chùa bất cứ lúc nào.</p>
         </div>

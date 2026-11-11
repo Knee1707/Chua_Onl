@@ -11,7 +11,10 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
+    "@tresjs/cientos": "^5.10.1",
+    "@tresjs/nuxt": "^5.8.1",
     "nuxt": "^4.0.0",
+    "three": "^0.187.0",
     "vue": "^3.5.0",
     "vue-router": "^4.4.0"
   },

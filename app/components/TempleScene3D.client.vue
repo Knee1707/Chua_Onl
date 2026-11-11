@@ -1,0 +1,477 @@
+<script setup lang="ts">
+import * as THREE from 'three'
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
+import { buildWorld, makeSandalPair, type World } from '~/three/world'
+
+const emit = defineEmits<{ (e: 'interact', action: string): void }>()
+
+const canvasEl = ref<HTMLCanvasElement | null>(null)
+const phase = ref<'intro' | 'climbing' | 'threshold' | 'inside'>('intro')
+const hoverLabel = ref<string>('')
+const toast = ref<string>('')
+const sandalsOff = ref(false)
+
+let renderer: THREE.WebGLRenderer
+let scene: THREE.Scene
+let camera: THREE.PerspectiveCamera
+let world: World
+let raf = 0
+let clock: THREE.Clock
+
+// --- Nhân vật phật tử + camera góc nhìn thứ 3 ---
+let avatar: THREE.Group
+let legL: THREE.Group, legR: THREE.Group
+const avatarPos = new THREE.Vector3(0, 0, 78)
+let avatarYaw = Math.PI
+let walkAmt = 0
+let walkPhase = 0
+const cam = { yaw: Math.PI, pitch: 0.3, dist: 8 } // camera xoay quanh nhân vật
+
+const keys: Record<string, boolean> = {}
+let dragging = false
+let moved = false
+let lastX = 0
+let lastY = 0
+
+let fullPath: THREE.Vector3[] = []
+let climbT = 0
+let sandalPair: THREE.Group | null = null
+
+function buildAvatar() {
+  const g = new THREE.Group()
+  const robe = new THREE.MeshStandardMaterial({ color: 0x5f6f82, roughness: 0.85 })      // áo tràng lam
+  const robe2 = new THREE.MeshStandardMaterial({ color: 0x4e5c6d, roughness: 0.85 })
+  const skin = new THREE.MeshStandardMaterial({ color: 0xe8c39e, roughness: 0.7 })
+  const sashM = new THREE.MeshStandardMaterial({ color: 0xd9b24a, roughness: 0.6, metalness: 0.2 })
+  const legM = new THREE.MeshStandardMaterial({ color: 0x3a3330, roughness: 1 })
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.62, 1.5, 16), robe); body.position.y = 1.2; body.castShadow = true
+  const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.66, 0.7, 16), robe2); skirt.position.y = 0.75
+  const shoulders = new THREE.Mesh(new THREE.SphereGeometry(0.44, 14, 12), robe); shoulders.scale.set(1, 0.55, 0.75); shoulders.position.y = 1.9
+  const sash = new THREE.Mesh(new THREE.BoxGeometry(0.55, 1.0, 0.06), sashM); sash.position.set(0, 1.45, 0.4)
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.31, 18, 16), skin); head.position.y = 2.32; head.scale.y = 1.08
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.33, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.62), new THREE.MeshStandardMaterial({ color: 0x241f1b, roughness: 1 })); hair.position.y = 2.4
+  const hands = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), skin); hands.scale.set(0.9, 1.3, 0.7); hands.position.set(0, 1.55, 0.42)
+  for (const s of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.8, 8), robe); arm.position.set(s * 0.28, 1.5, 0.28); arm.rotation.z = s * 0.4; arm.rotation.x = -0.9; g.add(arm)
+  }
+  const mkLeg = (sx: number) => { const p = new THREE.Group(); p.position.set(sx, 0.78, 0); const l = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.1, 0.78, 8), legM); l.position.y = -0.39; l.castShadow = true; p.add(l); return p }
+  legL = mkLeg(-0.17); legR = mkLeg(0.17)
+  g.add(body, skirt, shoulders, sash, head, hair, hands, legL, legR)
+  return g
+}
+
+function placeAvatar() { avatar.position.set(avatarPos.x, avatarPos.y, avatarPos.z); avatar.rotation.y = avatarYaw }
+function animateLegs() {
+  const swing = Math.sin(walkPhase) * 0.5 * walkAmt
+  legL.rotation.x = swing; legR.rotation.x = -swing
+  avatar.position.y = avatarPos.y + Math.abs(Math.sin(walkPhase)) * 0.06 * walkAmt
+}
+function updateCamera(lerpK = 1) {
+  const off = new THREE.Vector3(Math.sin(cam.yaw) * Math.cos(cam.pitch), Math.sin(cam.pitch), Math.cos(cam.yaw) * Math.cos(cam.pitch)).multiplyScalar(cam.dist)
+  const target = avatarPos.clone().add(new THREE.Vector3(0, 1.7, 0))
+  const desired = target.clone().add(off)
+  if (lerpK >= 1) camera.position.copy(desired); else camera.position.lerp(desired, lerpK)
+  camera.lookAt(target)
+}
+
+function startClimb() { phase.value = 'climbing'; climbT = 0 }
+
+function removeSandalsAndEnter() {
+  const pair = makeSandalPair()
+  const spot = world.sandalSpot
+  pair.position.set(spot.x, spot.y, spot.z); pair.rotation.y = -0.4
+  world.root.add(pair); sandalPair = pair
+  sandalsOff.value = true
+  // điểm tương tác "mang dép" khi quay ra
+  const hit = new THREE.Mesh(new THREE.BoxGeometry(2, 1.5, 2), new THREE.MeshBasicMaterial({ visible: false }))
+  hit.position.set(spot.x, spot.y + 0.7, spot.z); world.root.add(hit)
+  world.interactives.push({ object: hit, action: 'sandals', label: '👡 Mang dép', focus: spot.clone() })
+  phase.value = 'inside'
+  avatarPos.set(0, world.floorY, -12); avatarYaw = Math.PI
+  cam.yaw = 0; cam.pitch = 0.28
+}
+
+function wearSandals() {
+  if (sandalPair) { world.root.remove(sandalPair); sandalPair = null }
+  const i = world.interactives.findIndex((x) => x.action === 'sandals')
+  if (i >= 0) world.interactives.splice(i, 1)
+  sandalsOff.value = false
+  toast.value = '👟 Đã mang dép — bạn có thể rời chùa'
+  setTimeout(() => (toast.value = ''), 2600)
+}
+
+// --- Ngồi quỳ trên thảm ---
+const sitting = ref(false)
+let nearMat: THREE.Vector3 | null = null
+
+function setKneel(on: boolean) {
+  if (!legL) return
+  if (on) { legL.rotation.x = -1.5; legR.rotation.x = -1.5 }
+  else { legL.rotation.x = 0; legR.rotation.x = 0 }
+}
+function sitDown() {
+  if (!nearMat) return
+  avatarPos.set(nearMat.x, world.floorY, nearMat.z)
+  avatarYaw = Math.PI // quay mặt vào ban thờ
+  walkAmt = 0; sitting.value = true
+  placeAvatar(); avatar.position.y = avatarPos.y - 0.5; setKneel(true)
+  cam.pitch = 0.1; cam.dist = 6.5
+}
+function standUp() { sitting.value = false; setKneel(false); cam.dist = 8 }
+
+// --- interaction raycast (xét khoảng cách từ NHÂN VẬT tới vật) ---
+const raycaster = new THREE.Raycaster()
+
+function pickCenter(): { action: string; label: string } | null {
+  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera)
+  const hits = raycaster.intersectObjects(world.interactives.map((i) => i.object), false)
+  for (const h of hits) {
+    const found = world.interactives.find((i) => i.object === h.object)
+    if (found && avatarPos.distanceTo(found.object.position) < 7.5) return { action: found.action, label: found.label }
+  }
+  // dự phòng: điểm tương tác gần nhất quanh nhân vật (không cần ngắm chính xác)
+  let best: { action: string; label: string } | null = null, bd = 5
+  for (const it of world.interactives) {
+    const d = avatarPos.distanceTo(it.object.position)
+    if (d < bd) { bd = d; best = { action: it.action, label: it.label } }
+  }
+  return best
+}
+
+function onClick() {
+  if (phase.value !== 'inside') return
+  if (moved) { moved = false; return }
+  if (sitting.value) { standUp(); return } // bấm lần nữa để đứng dậy
+  if (nearMat) { sitDown(); return } // đứng trên thảm -> ngồi quỳ
+  const hit = pickCenter()
+  if (hit) {
+    if (hit.action === 'sandals') wearSandals()
+    else emit('interact', hit.action)
+  }
+}
+
+// --- loop ---
+function animate() {
+  raf = requestAnimationFrame(animate)
+  const dt = Math.min(clock.getDelta(), 0.05)
+  const t = clock.elapsedTime
+
+  world.updaters.forEach((u) => u(t, dt))
+
+  if (phase.value === 'climbing') {
+    climbT += dt * 0.06
+    const n = fullPath.length - 1
+    const f = Math.min(climbT, 1) * n
+    const i = Math.floor(f), frac = f - i
+    const a = fullPath[Math.min(i, n)], b = fullPath[Math.min(i + 1, n)]
+    const p = a.clone().lerp(b, frac)
+    avatarPos.set(p.x, p.y - 1.65, p.z) // chân nhân vật
+    const dir = b.clone().sub(a); if (dir.lengthSq() > 1e-4) avatarYaw = Math.atan2(dir.x, dir.z)
+    walkAmt = 1; walkPhase += dt * 9
+    cam.yaw = avatarYaw + Math.PI; cam.pitch = 0.22
+    placeAvatar(); animateLegs(); updateCamera(0.12)
+    if (climbT >= 1) { phase.value = 'threshold'; avatarPos.set(fullPath[n].x, world.floorY, fullPath[n].z) }
+  } else if (phase.value === 'inside') {
+    const moving = keys['w'] || keys['s'] || keys['a'] || keys['d'] || keys['arrowup'] || keys['arrowdown'] || keys['arrowleft'] || keys['arrowright']
+    if (sitting.value) {
+      if (moving) standUp() // bấm phím đi -> đứng dậy
+    }
+    if (!sitting.value) {
+      const speed = 6.5 * dt
+      const camF = new THREE.Vector3(Math.sin(cam.yaw), 0, Math.cos(cam.yaw))
+      const fwd = camF.clone().negate()
+      const right = new THREE.Vector3(fwd.z, 0, -fwd.x)
+      const move = new THREE.Vector3()
+      if (keys['w'] || keys['arrowup']) move.add(fwd)
+      if (keys['s'] || keys['arrowdown']) move.sub(fwd)
+      if (keys['d'] || keys['arrowright']) move.add(right)
+      if (keys['a'] || keys['arrowleft']) move.sub(right)
+      if (move.lengthSq() > 0) {
+        move.normalize()
+        avatarPos.x = THREE.MathUtils.clamp(avatarPos.x + move.x * speed, world.bounds.minX, world.bounds.maxX)
+        avatarPos.z = THREE.MathUtils.clamp(avatarPos.z + move.z * speed, world.bounds.minZ, world.bounds.maxZ)
+        avatarYaw = Math.atan2(move.x, move.z)
+        walkAmt = Math.min(1, walkAmt + dt * 6); walkPhase += dt * 10
+      } else {
+        walkAmt = Math.max(0, walkAmt - dt * 6)
+      }
+      avatarPos.y = world.floorY
+      placeAvatar(); animateLegs()
+      // thảm quỳ gần nhất (ưu tiên hiện "Ngồi quỳ" khi đang đứng trên thảm)
+      nearMat = null; let bd = 1.6
+      for (const m of world.mats) { const d = avatarPos.distanceTo(m); if (d < bd) { bd = d; nearMat = m } }
+      const hit = nearMat ? null : pickCenter()
+      hoverLabel.value = nearMat ? '🧎 Ngồi quỳ' : (hit ? hit.label : '')
+      updateCamera(0.2)
+    } else {
+      placeAvatar(); avatar.position.y = avatarPos.y - 0.5
+      hoverLabel.value = '🧎 Đứng dậy'
+      updateCamera(0.12)
+    }
+  } else if (phase.value === 'threshold') {
+    placeAvatar(); animateLegs(); updateCamera(0.1)
+  } else {
+    placeAvatar() // intro: giữ camera điện ảnh
+  }
+
+  renderer.render(scene, camera)
+}
+
+function onResize() {
+  if (!renderer) return
+  camera.aspect = window.innerWidth / window.innerHeight
+  camera.updateProjectionMatrix()
+  renderer.setSize(window.innerWidth, window.innerHeight)
+}
+
+function onKey(e: KeyboardEvent, down: boolean) {
+  keys[e.key.toLowerCase()] = down
+}
+
+function onPointerDown(e: PointerEvent) {
+  if (phase.value !== 'inside') return
+  dragging = true
+  moved = false
+  lastX = e.clientX
+  lastY = e.clientY
+}
+function onPointerMove(e: PointerEvent) {
+  if (!dragging) return
+  const dx = e.clientX - lastX
+  const dy = e.clientY - lastY
+  if (Math.abs(dx) + Math.abs(dy) > 4) moved = true
+  cam.yaw -= dx * 0.005
+  cam.pitch = THREE.MathUtils.clamp(cam.pitch + dy * 0.004, -0.15, 1.1)
+  lastX = e.clientX
+  lastY = e.clientY
+}
+function onPointerUp() {
+  dragging = false
+}
+
+function startScene() {
+  const canvas = canvasEl.value
+  if (!canvas) { requestAnimationFrame(startScene); return } // chờ canvas gắn vào DOM
+ try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
+  renderer.setSize(window.innerWidth, window.innerHeight)
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  renderer.shadowMap.enabled = true
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap
+  renderer.toneMapping = THREE.ACESFilmicToneMapping
+  renderer.toneMappingExposure = 1.0
+
+  scene = new THREE.Scene()
+  scene.background = new THREE.Color(0xcfe3ef)
+  scene.fog = new THREE.Fog(0xd7e6ef, 150, 380)
+
+  // bầu trời gradient (vòm)
+  const skyGeo = new THREE.SphereGeometry(440, 32, 16)
+  const skyMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {
+      top: { value: new THREE.Color(0x6ea6d6) },
+      mid: { value: new THREE.Color(0xcfe3ef) },
+      bottom: { value: new THREE.Color(0xeee3cf) }
+    },
+    vertexShader: `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+    fragmentShader: `
+      varying vec3 vP; uniform vec3 top; uniform vec3 mid; uniform vec3 bottom;
+      void main(){
+        float h = normalize(vP).y;
+        vec3 c = h > 0.0 ? mix(mid, top, pow(h,0.6)) : mix(mid, bottom, pow(-h,0.5));
+        gl_FragColor = vec4(c,1.0);
+      }`
+  })
+  scene.add(new THREE.Mesh(skyGeo, skyMat))
+
+  // ánh sáng môi trường (IBL) cho kim loại vàng/đồng lấp lánh
+  const pmrem = new THREE.PMREMGenerator(renderer)
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+
+  camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.3, 1200)
+
+  // ánh sáng (dịu, không cháy sáng)
+  const hemi = new THREE.HemisphereLight(0xdce8f0, 0x6a5a48, 0.75)
+  scene.add(hemi)
+  const sun = new THREE.DirectionalLight(0xfff2d8, 1.25)
+  sun.position.set(40, 80, 60)
+  sun.castShadow = true
+  sun.shadow.mapSize.set(2048, 2048)
+  sun.shadow.camera.near = 10
+  sun.shadow.camera.far = 260
+  sun.shadow.bias = -0.0004
+  const sc = sun.shadow.camera as THREE.OrthographicCamera
+  sc.left = -90; sc.right = 90; sc.top = 90; sc.bottom = -90
+  scene.add(sun)
+  scene.add(new THREE.AmbientLight(0xffffff, 0.42))
+
+  world = buildWorld(scene)
+  avatar = buildAvatar(); scene.add(avatar)
+
+  // đèn ấm dịu trong đại điện (giảm mạnh để hết cháy trần)
+  for (const lz of [-28, -38]) {
+    const hl = new THREE.PointLight(0xffe0b0, 26, 44, 1.4)
+    hl.position.set(0, world.floorY + 5.5, lz)
+    scene.add(hl)
+  }
+  const yardLight = new THREE.PointLight(0xffe8c0, 14, 40, 1.5)
+  yardLight.position.set(0, world.floorY + 7, 6)
+  scene.add(yardLight)
+
+  // đường hành hương: cầu thang -> qua cổng -> sân -> thềm đại điện
+  const fy = world.floorY + 1.7
+  fullPath = [
+    ...world.climbPath,
+    new THREE.Vector3(0, fy, 50), // lên tới mép đỉnh, băng qua bãi cỏ
+    new THREE.Vector3(0, fy, 36),
+    new THREE.Vector3(0, fy, 26),
+    new THREE.Vector3(0, fy, 14),
+    new THREE.Vector3(0, fy, 6),
+    new THREE.Vector3(4, fy, -4),
+    new THREE.Vector3(8, fy, -12)
+  ]
+
+  // nhân vật đứng dưới chân núi; camera ngắm toàn cảnh chùa trên đỉnh núi
+  avatarPos.set(0, -9, 88); avatarYaw = Math.PI; placeAvatar()
+  camera.position.set(0, 24, 126)
+  camera.lookAt(0, world.floorY - 2, -10)
+
+  // lối tắt dev: .../hanh-huong#inside vào thẳng trong chùa
+  if (import.meta.dev && location.hash === '#inside') {
+    phase.value = 'inside'; sandalsOff.value = true
+    avatarPos.set(0, world.floorY, -10); avatarYaw = Math.PI
+    cam.yaw = 0; cam.pitch = 0.3
+  }
+
+  clock = new THREE.Clock()
+  window.addEventListener('resize', onResize)
+  window.addEventListener('keydown', (e) => onKey(e, true))
+  window.addEventListener('keyup', (e) => onKey(e, false))
+  animate()
+ } catch (e: any) {
+  console.error('[3D] init failed:', e && e.message, '\n', e && e.stack)
+ }
+}
+onMounted(startScene)
+
+onBeforeUnmount(() => {
+  cancelAnimationFrame(raf)
+  window.removeEventListener('resize', onResize)
+  renderer?.dispose()
+})
+
+defineExpose({ phase })
+</script>
+
+<template>
+  <div class="scene-wrap" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="onPointerUp" @pointerleave="onPointerUp">
+    <canvas ref="canvasEl" class="scene-canvas" @click="onClick" />
+
+    <!-- Lớp phủ: Mở đầu -->
+    <transition name="fade">
+      <div v-if="phase === 'intro'" class="overlay intro">
+        <div class="intro-card">
+          <p class="eyebrow">Hành hương</p>
+          <h1>Chùa Trên Núi</h1>
+          <p class="sub">Ngôi cổ tự tọa lạc trên đỉnh non cao. Vượt từng bậc đá,
+            qua cổng tam quan uy nghi để bước vào chốn thiền tịnh.</p>
+          <button class="btn-gold" @click="startClimb">🪷 Bắt đầu leo núi</button>
+        </div>
+      </div>
+    </transition>
+
+    <!-- Lớp phủ: Cởi dép ở thềm -->
+    <transition name="fade">
+      <div v-if="phase === 'threshold'" class="overlay threshold">
+        <div class="intro-card">
+          <h2>Trước thềm chính điện</h2>
+          <p class="sub">Theo lệ nhà chùa, xin cởi dép để ngoài trước khi vào lễ Phật.</p>
+          <button class="btn-gold" @click="removeSandalsAndEnter">👡 Cởi dép & bước vào</button>
+        </div>
+      </div>
+    </transition>
+
+    <!-- HUD khi ở trong chùa -->
+    <template v-if="phase === 'inside'">
+      <transition name="fade">
+        <div v-if="hoverLabel" class="action-hint">{{ hoverLabel }} <span>— bấm để thực hiện</span></div>
+      </transition>
+      <div class="controls-hint">
+        <span><b>W A S D</b> / phím mũi tên — đi lại</span>
+        <span>Giữ &amp; kéo chuột — xoay quanh</span>
+        <span>Lại gần vật &amp; bấm — tương tác</span>
+      </div>
+    </template>
+
+    <!-- thông báo nhỏ -->
+    <transition name="fade">
+      <div v-if="toast" class="toast">{{ toast }}</div>
+    </transition>
+
+    <!-- nhãn trạng thái đang leo -->
+    <transition name="fade">
+      <div v-if="phase === 'climbing'" class="climb-note">Đang leo lên chùa… hãy giữ tâm an tịnh 🌄</div>
+    </transition>
+  </div>
+</template>
+
+<style scoped>
+.scene-wrap { position: fixed; inset: 0; overflow: hidden; background: #bcd4e6; touch-action: none; }
+.scene-canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+.scene-canvas:active { cursor: grabbing; }
+
+.overlay {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  background: linear-gradient(to bottom, rgba(20,12,6,0) 30%, rgba(20,12,6,.55) 100%);
+  z-index: 10; padding: 24px;
+}
+.overlay.intro, .overlay.threshold { align-items: end; padding-bottom: 7vh; }
+.intro-card {
+  max-width: 440px; text-align: center; color: #f5efe0;
+  background: rgba(40,26,16,.55); backdrop-filter: blur(8px);
+  border: 1px solid rgba(201,163,86,.5); border-radius: 20px; padding: 32px 28px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.4);
+}
+.eyebrow { letter-spacing: .35em; text-transform: uppercase; font-size: .7rem; color: #c9a356; margin-bottom: 8px; }
+.intro-card h1 { font-family: 'Cormorant Garamond','Noto Serif',serif; font-size: 3rem; line-height: 1; margin: 0 0 14px; color: #f3e6c4; }
+.intro-card h2 { font-family: 'Cormorant Garamond','Noto Serif',serif; font-size: 2rem; margin: 0 0 12px; color: #f3e6c4; }
+.sub { font-size: 1rem; line-height: 1.6; opacity: .9; margin-bottom: 24px; }
+.btn-gold {
+  background: linear-gradient(135deg,#d9b969,#b4863f); color: #2a1a0c; font-weight: 600;
+  border: none; padding: 14px 26px; border-radius: 999px; font-size: 1.05rem; cursor: pointer;
+  box-shadow: 0 8px 24px rgba(201,163,86,.4); transition: transform .2s, box-shadow .2s;
+}
+.btn-gold:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(201,163,86,.55); }
+
+.crosshair {
+  position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px;
+  border: 2px solid rgba(255,255,255,.7); border-radius: 50%; pointer-events: none; z-index: 5;
+}
+.action-hint {
+  position: absolute; left: 50%; top: 56%; transform: translateX(-50%);
+  background: rgba(40,26,16,.8); color: #f3e6c4; padding: 8px 18px; border-radius: 999px;
+  border: 1px solid rgba(201,163,86,.5); font-size: 1rem; z-index: 6; pointer-events: none; white-space: nowrap;
+}
+.action-hint span { opacity: .7; font-size: .85rem; }
+.controls-hint {
+  position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
+  display: flex; gap: 18px; flex-wrap: wrap; justify-content: center;
+  background: rgba(40,26,16,.5); color: #f5efe0; padding: 10px 18px; border-radius: 14px;
+  font-size: .82rem; z-index: 6; pointer-events: none; backdrop-filter: blur(6px);
+}
+.controls-hint b { color: #c9a356; }
+.toast {
+  position: absolute; left: 50%; top: 14%; transform: translateX(-50%);
+  background: rgba(40,26,16,.85); color: #f3e6c4; padding: 10px 22px; border-radius: 999px;
+  border: 1px solid rgba(201,163,86,.6); font-size: 1rem; z-index: 7; backdrop-filter: blur(6px);
+}
+.climb-note {
+  position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%);
+  color: #f5efe0; background: rgba(40,26,16,.5); padding: 10px 22px; border-radius: 999px;
+  z-index: 6; backdrop-filter: blur(6px); font-size: .95rem;
+}
+.fade-enter-active, .fade-leave-active { transition: opacity .6s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+</style>
