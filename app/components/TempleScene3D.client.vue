@@ -8,8 +8,15 @@ const emit = defineEmits<{ (e: 'interact', action: string): void }>()
 
 const mp = useMultiplayer()
 const online = mp.online
-interface RemoteAvatar { group: THREE.Group; legL: THREE.Group; legR: THREE.Group; label: THREE.Sprite; walkPhase: number }
+const messages = mp.messages
+const chatText = ref('')
+const chatOpen = ref(true)
+const chatScrollEl = ref<HTMLElement | null>(null)
+interface RemoteAvatar { group: THREE.Group; legL: THREE.Group; legR: THREE.Group; label: THREE.Sprite; walkPhase: number; sandals?: THREE.Group }
 const remotes = new Map<string, RemoteAvatar>()
+
+function onSendChat() { mp.sendChat(chatText.value); chatText.value = '' }
+watch(() => messages.length, () => nextTick(() => { if (chatScrollEl.value) chatScrollEl.value.scrollTop = chatScrollEl.value.scrollHeight }))
 
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 const phase = ref<'intro' | 'climbing' | 'threshold' | 'inside'>('intro')
@@ -86,6 +93,12 @@ function colorFromId(id: string) {
   const palette = [0x8a5a3a, 0x4e7a5a, 0x7a4e6d, 0x3a5f7a, 0x7a6a3a, 0x6a4e8a, 0x8a4a4a]
   return palette[h % palette.length]
 }
+// chỗ để dép riêng cho mỗi người (rải dọc thềm, không chồng nhau)
+function sandalSpotFor(id: string) {
+  let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) & 0xffff
+  const s = world.sandalSpot
+  return new THREE.Vector3(s.x + ((h % 9) - 4) * 0.85, s.y, s.z + (Math.floor(h / 9) % 3) * 0.7)
+}
 
 function placeAvatar() { avatar.position.set(avatarPos.x, avatarPos.y, avatarPos.z); avatar.rotation.y = avatarYaw }
 function animateLegs() {
@@ -122,9 +135,17 @@ function syncRemotes(dt: number) {
       r.legL.rotation.x = sw; r.legR.rotation.x = -sw
       r.group.position.y = p.y + Math.abs(Math.sin(r.walkPhase)) * 0.06
     } else { r.legL.rotation.x = 0; r.legR.rotation.x = 0 }
+    // dép để ngoài của người khác
+    if (p.bare && !r.sandals) {
+      const sp = sandalSpotFor(id); const pair = makeSandalPair()
+      pair.position.set(sp.x, sp.y, sp.z); pair.rotation.y = -0.4
+      scene.add(pair); r.sandals = pair
+    } else if (!p.bare && r.sandals) {
+      scene.remove(r.sandals); r.sandals = undefined
+    }
   }
   for (const [id, r] of remotes) {
-    if (!seen.has(id)) { scene.remove(r.group); remotes.delete(id) }
+    if (!seen.has(id)) { scene.remove(r.group); if (r.sandals) scene.remove(r.sandals); remotes.delete(id) }
   }
 }
 function updateCamera(lerpK = 1) {
@@ -139,7 +160,7 @@ function startClimb() { phase.value = 'climbing'; climbT = 0 }
 
 function removeSandalsAndEnter() {
   const pair = makeSandalPair()
-  const spot = world.sandalSpot
+  const spot = sandalSpotFor(mp.myId)
   pair.position.set(spot.x, spot.y, spot.z); pair.rotation.y = -0.4
   world.root.add(pair); sandalPair = pair
   sandalsOff.value = true
@@ -310,6 +331,11 @@ function onResize() {
 }
 
 function onKey(e: KeyboardEvent, down: boolean) {
+  const el = document.activeElement as HTMLElement | null
+  if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+    for (const k in keys) keys[k] = false // đang gõ chat -> không điều khiển
+    return
+  }
   keys[e.key.toLowerCase()] = down
 }
 
@@ -398,7 +424,8 @@ function startScene() {
   // --- Multiplayer: kết nối & phát vị trí của mình ---
   mp.connect(() => ({
     x: avatarPos.x, y: avatarPos.y, z: avatarPos.z, yaw: avatarYaw,
-    st: sitting.value ? 2 : (walkAmt > 0.35 ? 1 : 0)
+    st: sitting.value ? 2 : (walkAmt > 0.35 ? 1 : 0),
+    bare: sandalsOff.value
   }))
 
   // đèn ấm dịu trong đại điện (giảm mạnh để hết cháy trần)
@@ -437,6 +464,7 @@ function startScene() {
   }
 
   try { isTouch.value = window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window } catch {}
+  chatOpen.value = !isTouch.value // mobile: mặc định thu gọn chat
 
   clock = new THREE.Clock()
   window.addEventListener('resize', onResize)
@@ -528,6 +556,26 @@ defineExpose({ phase })
     <transition name="fade">
       <div v-if="phase === 'climbing'" class="climb-note">Đang leo lên chùa… hãy giữ tâm an tịnh 🌄</div>
     </transition>
+
+    <!-- Khung chat (góc phải) -->
+    <div class="chat" @pointerdown.stop @pointerup.stop @pointermove.stop>
+      <div v-show="chatOpen" class="chat-panel">
+        <div class="chat-head">💬 Trò chuyện tại chùa
+          <button class="chat-x" @click="chatOpen = false">✕</button>
+        </div>
+        <div ref="chatScrollEl" class="chat-msgs">
+          <div v-if="!messages.length" class="chat-empty">Chưa có tin nhắn — chào mọi người nào! 🙏</div>
+          <div v-for="(m, i) in messages" :key="i" class="chat-msg" :class="{ mine: m.mine }">
+            <b>{{ m.name }}:</b> {{ m.text }}
+          </div>
+        </div>
+        <form class="chat-form" @submit.prevent="onSendChat">
+          <input v-model="chatText" maxlength="200" placeholder="Nhắn gì đó…" />
+          <button type="submit">Gửi</button>
+        </form>
+      </div>
+      <button class="chat-toggle" @click="chatOpen = !chatOpen">💬<span v-if="!chatOpen && messages.length" class="chat-badge">{{ messages.length }}</span></button>
+    </div>
   </div>
 </template>
 
@@ -594,6 +642,31 @@ defineExpose({ phase })
   touch-action: none; display: grid; place-items: center; -webkit-tap-highlight-color: transparent;
 }
 .touch-act:active { background: rgba(201,163,86,.5); }
+
+/* Khung chat góc phải */
+.chat { position: absolute; right: 14px; bottom: 14px; z-index: 11; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.chat-panel {
+  width: 290px; max-width: 80vw; height: 300px; max-height: 46vh; display: flex; flex-direction: column;
+  background: rgba(32,22,14,.82); border: 1px solid rgba(201,163,86,.45); border-radius: 14px;
+  overflow: hidden; backdrop-filter: blur(8px); box-shadow: 0 14px 40px rgba(0,0,0,.4);
+}
+.chat-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; color: #f3e6c4; font-size: .85rem; border-bottom: 1px solid rgba(201,163,86,.3); }
+.chat-x { border: none; background: transparent; color: #c9a356; cursor: pointer; font-size: .9rem; }
+.chat-msgs { flex: 1; overflow-y: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 5px; }
+.chat-empty { color: rgba(245,239,224,.5); font-size: .8rem; text-align: center; margin: auto 0; }
+.chat-msg { color: #ece3d0; font-size: .84rem; line-height: 1.35; word-break: break-word; }
+.chat-msg b { color: #d9b24a; }
+.chat-msg.mine b { color: #8fd6a0; }
+.chat-form { display: flex; gap: 6px; padding: 8px; border-top: 1px solid rgba(201,163,86,.3); }
+.chat-form input { flex: 1; min-width: 0; background: rgba(255,255,255,.1); border: 1px solid rgba(201,163,86,.35); color: #fff; padding: 8px 10px; border-radius: 10px; font-size: .85rem; outline: none; }
+.chat-form input:focus { border-color: #c9a356; }
+.chat-form button { background: linear-gradient(135deg,#d9b969,#b4863f); color: #2a1a0c; border: none; padding: 0 14px; border-radius: 10px; font-weight: 600; cursor: pointer; font-size: .85rem; }
+.chat-toggle {
+  width: 50px; height: 50px; border-radius: 50%; border: 1px solid rgba(201,163,86,.5);
+  background: rgba(40,26,16,.7); backdrop-filter: blur(6px); cursor: pointer; font-size: 1.3rem;
+  position: relative; display: grid; place-items: center;
+}
+.chat-badge { position: absolute; top: -4px; right: -4px; background: #d23b2e; color: #fff; font-size: .7rem; min-width: 18px; height: 18px; border-radius: 9px; display: grid; place-items: center; padding: 0 4px; }
 .online-badge {
   position: absolute; top: 16px; right: 16px; z-index: 8;
   display: flex; align-items: center; gap: 8px;
