@@ -199,17 +199,38 @@ function pickCenter(): { action: string; label: string } | null {
   return best
 }
 
-function onClick() {
+function doInteract() {
   if (phase.value !== 'inside') return
-  if (moved) { moved = false; return }
-  if (sitting.value) { standUp(); return } // bấm lần nữa để đứng dậy
-  if (nearMat) { sitDown(); return } // đứng trên thảm -> ngồi quỳ
+  if (sitting.value) { standUp(); return } // đứng dậy
+  if (nearMat) { sitDown(); return } // ngồi quỳ
   const hit = pickCenter()
   if (hit) {
     if (hit.action === 'sandals') wearSandals()
     else emit('interact', hit.action)
   }
 }
+function onClick() {
+  if (phase.value !== 'inside') return
+  if (moved) { moved = false; return }
+  doInteract()
+}
+
+// --- Điều khiển cảm ứng (mobile): joystick ảo ---
+const isTouch = ref(false)
+const joyVec = reactive({ x: 0, y: 0 }) // -1..1 ; y âm = tiến
+const joyBaseEl = ref<HTMLElement | null>(null)
+let joyActive = false
+function joyStart(e: PointerEvent) { joyActive = true; ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId); joyMove(e) }
+function joyMove(e: PointerEvent) {
+  if (!joyActive || !joyBaseEl.value) return
+  const r = joyBaseEl.value.getBoundingClientRect()
+  let dx = (e.clientX - (r.left + r.width / 2)) / (r.width / 2)
+  let dy = (e.clientY - (r.top + r.height / 2)) / (r.height / 2)
+  const len = Math.hypot(dx, dy); if (len > 1) { dx /= len; dy /= len }
+  joyVec.x = dx; joyVec.y = dy
+}
+function joyEnd() { joyActive = false; joyVec.x = 0; joyVec.y = 0 }
+const joyKnob = computed(() => ({ transform: `translate(${joyVec.x * 36}px, ${joyVec.y * 36}px)` }))
 
 // --- loop ---
 function animate() {
@@ -233,9 +254,10 @@ function animate() {
     placeAvatar(); animateLegs(); updateCamera(0.12)
     if (climbT >= 1) { phase.value = 'threshold'; avatarPos.set(fullPath[n].x, world.floorY, fullPath[n].z) }
   } else if (phase.value === 'inside') {
-    const moving = keys['w'] || keys['s'] || keys['a'] || keys['d'] || keys['arrowup'] || keys['arrowdown'] || keys['arrowleft'] || keys['arrowright']
+    const joyOn = Math.abs(joyVec.x) + Math.abs(joyVec.y) > 0.08
+    const moving = joyOn || keys['w'] || keys['s'] || keys['a'] || keys['d'] || keys['arrowup'] || keys['arrowdown'] || keys['arrowleft'] || keys['arrowright']
     if (sitting.value) {
-      if (moving) standUp() // bấm phím đi -> đứng dậy
+      if (moving) standUp() // đi -> đứng dậy
     }
     if (!sitting.value) {
       const speed = 6.5 * dt
@@ -247,6 +269,7 @@ function animate() {
       if (keys['s'] || keys['arrowdown']) move.sub(fwd)
       if (keys['d'] || keys['arrowright']) move.add(right)
       if (keys['a'] || keys['arrowleft']) move.sub(right)
+      if (joyOn) { move.add(right.clone().multiplyScalar(joyVec.x)); move.add(fwd.clone().multiplyScalar(-joyVec.y)) }
       if (move.lengthSq() > 0) {
         move.normalize()
         avatarPos.x = THREE.MathUtils.clamp(avatarPos.x + move.x * speed, world.bounds.minX, world.bounds.maxX)
@@ -413,6 +436,8 @@ function startScene() {
     cam.yaw = 0; cam.pitch = 0.3
   }
 
+  try { isTouch.value = window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window } catch {}
+
   clock = new THREE.Clock()
   window.addEventListener('resize', onResize)
   window.addEventListener('keydown', (e) => onKey(e, true))
@@ -470,11 +495,28 @@ defineExpose({ phase })
       <transition name="fade">
         <div v-if="hoverLabel" class="action-hint">{{ hoverLabel }} <span>— bấm để thực hiện</span></div>
       </transition>
-      <div class="controls-hint">
-        <span><b>W A S D</b> / phím mũi tên — đi lại</span>
-        <span>Giữ &amp; kéo chuột — xoay quanh</span>
-        <span>Lại gần vật &amp; bấm — tương tác</span>
+      <div class="controls-hint" :class="{ 'hint-touch': isTouch }">
+        <template v-if="isTouch">
+          <span>Cần gạt bên trái — đi lại</span>
+          <span>Kéo trên màn hình — xoay</span>
+          <span>Nút 🙏 — tương tác / quỳ</span>
+        </template>
+        <template v-else>
+          <span><b>W A S D</b> / phím mũi tên — đi lại</span>
+          <span>Giữ &amp; kéo chuột — xoay quanh</span>
+          <span>Lại gần vật &amp; bấm — tương tác</span>
+        </template>
       </div>
+
+      <!-- Điều khiển cảm ứng (mobile) -->
+      <template v-if="isTouch">
+        <div ref="joyBaseEl" class="joystick"
+             @pointerdown.stop.prevent="joyStart" @pointermove.stop.prevent="joyMove"
+             @pointerup.stop="joyEnd" @pointerleave.stop="joyEnd" @pointercancel.stop="joyEnd">
+          <div class="joystick-knob" :style="joyKnob" />
+        </div>
+        <button class="touch-act" @pointerdown.stop.prevent="doInteract">🙏</button>
+      </template>
     </template>
 
     <!-- thông báo nhỏ -->
@@ -534,6 +576,24 @@ defineExpose({ phase })
   font-size: .82rem; z-index: 6; pointer-events: none; backdrop-filter: blur(6px);
 }
 .controls-hint b { color: #c9a356; }
+.controls-hint.hint-touch { bottom: 164px; font-size: .74rem; padding: 7px 12px; gap: 10px; max-width: 92vw; flex-direction: column; text-align: center; }
+.joystick {
+  position: absolute; left: 22px; bottom: 28px; width: 118px; height: 118px; z-index: 9;
+  border-radius: 50%; background: rgba(40,26,16,.35); border: 2px solid rgba(201,163,86,.45);
+  backdrop-filter: blur(4px); touch-action: none; display: grid; place-items: center;
+}
+.joystick-knob {
+  width: 52px; height: 52px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #e8d08a, #b4863f);
+  box-shadow: 0 3px 10px rgba(0,0,0,.4); pointer-events: none;
+}
+.touch-act {
+  position: absolute; right: 24px; bottom: 44px; width: 76px; height: 76px; z-index: 9;
+  border-radius: 50%; border: 2px solid rgba(201,163,86,.6); font-size: 2rem;
+  background: rgba(40,26,16,.55); backdrop-filter: blur(4px); cursor: pointer;
+  touch-action: none; display: grid; place-items: center; -webkit-tap-highlight-color: transparent;
+}
+.touch-act:active { background: rgba(201,163,86,.5); }
 .online-badge {
   position: absolute; top: 16px; right: 16px; z-index: 8;
   display: flex; align-items: center; gap: 8px;
