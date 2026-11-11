@@ -284,7 +284,7 @@ function animate() {
       const speed = 6.5 * dt
       const camF = new THREE.Vector3(Math.sin(cam.yaw), 0, Math.cos(cam.yaw))
       const fwd = camF.clone().negate()
-      const right = new THREE.Vector3(fwd.z, 0, -fwd.x)
+      const right = new THREE.Vector3(-fwd.z, 0, fwd.x) // bên phải thật (sửa lỗi ngược trái/phải)
       const move = new THREE.Vector3()
       if (keys['w'] || keys['arrowup']) move.add(fwd)
       if (keys['s'] || keys['arrowdown']) move.sub(fwd)
@@ -527,17 +527,10 @@ defineExpose({ phase })
       <transition name="fade">
         <div v-if="hoverLabel" class="action-hint">{{ hoverLabel }} <span>— bấm để thực hiện</span></div>
       </transition>
-      <div class="controls-hint" :class="{ 'hint-touch': isTouch }">
-        <template v-if="isTouch">
-          <span>Cần gạt bên trái — đi lại</span>
-          <span>Kéo trên màn hình — xoay</span>
-          <span>Nút 🙏 — tương tác / quỳ</span>
-        </template>
-        <template v-else>
-          <span><b>W A S D</b> / phím mũi tên — đi lại</span>
-          <span>Giữ &amp; kéo chuột — xoay quanh</span>
-          <span>Lại gần vật &amp; bấm — tương tác</span>
-        </template>
+      <div v-if="!isTouch" class="controls-hint">
+        <span><b>W A S D</b> / phím mũi tên — đi lại</span>
+        <span>Giữ &amp; kéo chuột — xoay quanh</span>
+        <span>Lại gần vật &amp; bấm — tương tác</span>
       </div>
 
       <!-- Điều khiển cảm ứng (mobile) -->

@@ -523,8 +523,9 @@ export function buildWorld(scene: THREE.Scene): World {
   const matMat = new THREE.MeshStandardMaterial({ color: 0xb02a22, roughness: 0.95 })
   for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) {
     const mx = (c - 4.5) * 2.9, mz = hallZ + 10 - r * 3.2
-    root.add(box(1.55, 0.08, 1.95, matMat, mx, floorY + 0.19, mz))
-    const bo = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.49, 0.24, 18), M.cushion()); bo.position.set(mx, floorY + 0.35, mz + 0.45); bo.castShadow = true; root.add(bo)
+    // đáy thảm floorY+0.24 (cao hơn mặt sàn floorY+0.15) -> hết z-fighting/nháy
+    root.add(box(1.55, 0.08, 1.95, matMat, mx, floorY + 0.28, mz))
+    const bo = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.49, 0.24, 18), M.cushion()); bo.position.set(mx, floorY + 0.44, mz + 0.45); bo.castShadow = true; root.add(bo)
     mats.push(new THREE.Vector3(mx, floorY, mz + 0.1))
   }
 
