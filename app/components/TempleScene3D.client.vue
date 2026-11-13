@@ -14,9 +14,57 @@ const chatOpen = ref(true)
 const chatScrollEl = ref<HTMLElement | null>(null)
 interface RemoteAvatar { group: THREE.Group; legL: THREE.Group; legR: THREE.Group; label: THREE.Sprite; walkPhase: number; sandals?: THREE.Group }
 const remotes = new Map<string, RemoteAvatar>()
+// bong bóng chat trên đầu nhân vật
+const bubbles = new Map<string, { sprite: THREE.Sprite; group: THREE.Object3D; hideAt: number }>()
+
+// vẽ bong bóng lời thoại (canvas -> sprite)
+function makeBubble(text: string) {
+  text = (text || '').slice(0, 120)
+  const canvas = document.createElement('canvas')
+  let ctx = canvas.getContext('2d')!
+  const pad = 26, fontSize = 40, maxW = 520, font = `600 ${fontSize}px "Segoe UI", sans-serif`
+  ctx.font = font
+  const words = text.split(/\s+/); const lines: string[] = []; let line = ''
+  for (const w of words) { const test = line ? line + ' ' + w : w; if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = w } else line = test }
+  if (line) lines.push(line)
+  const lineH = fontSize * 1.28
+  const textW = Math.min(maxW, Math.max(1, ...lines.map((l) => ctx.measureText(l).width)))
+  const tail = 20
+  canvas.width = Math.ceil(textW + pad * 2)
+  canvas.height = Math.ceil(lines.length * lineH + pad * 2 + tail)
+  ctx = canvas.getContext('2d')!; ctx.font = font
+  const w = canvas.width, bh = canvas.height - tail, r = 26
+  ctx.fillStyle = 'rgba(255,252,245,0.96)'
+  ctx.beginPath(); ctx.moveTo(r, 3); ctx.arcTo(w - 3, 3, w - 3, bh - 3, r); ctx.arcTo(w - 3, bh - 3, 3, bh - 3, r); ctx.arcTo(3, bh - 3, 3, 3, r); ctx.arcTo(3, 3, w - 3, 3, r); ctx.closePath()
+  ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(201,163,86,0.9)'; ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(w / 2 - 16, bh - 2); ctx.lineTo(w / 2, bh + tail - 2); ctx.lineTo(w / 2 + 16, bh - 2); ctx.closePath(); ctx.fill()
+  ctx.fillStyle = '#2a1a0c'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  lines.forEach((l, i) => ctx.fillText(l, w / 2, pad + lineH / 2 + i * lineH))
+  const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.SRGBColorSpace
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }))
+  const sc = 0.0105
+  sp.scale.set(canvas.width * sc, canvas.height * sc, 1)
+  sp.center.set(0.5, 0) // neo đáy -> nổi lên trên đầu
+  return sp
+}
+function showBubble(id: string, text: string) {
+  const group: THREE.Object3D | undefined = id === mp.myId ? avatar : remotes.get(id)?.group
+  if (!group || !text) return
+  const old = bubbles.get(id)
+  if (old) { old.group.remove(old.sprite); (old.sprite.material as THREE.SpriteMaterial).map?.dispose() }
+  const sprite = makeBubble(text)
+  sprite.position.set(0, 2.95, 0)
+  group.add(sprite)
+  bubbles.set(id, { sprite, group, hideAt: performance.now() + 6000 })
+}
 
 function onSendChat() { mp.sendChat(chatText.value); chatText.value = '' }
-watch(() => messages.length, () => nextTick(() => { if (chatScrollEl.value) chatScrollEl.value.scrollTop = chatScrollEl.value.scrollHeight }))
+let lastMsgCount = 0
+watch(() => messages.length, () => {
+  nextTick(() => { if (chatScrollEl.value) chatScrollEl.value.scrollTop = chatScrollEl.value.scrollHeight })
+  for (let i = lastMsgCount; i < messages.length; i++) showBubble(messages[i].id, messages[i].text)
+  lastMsgCount = messages.length
+})
 
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 const phase = ref<'intro' | 'climbing' | 'threshold' | 'inside'>('intro')
@@ -145,7 +193,7 @@ function syncRemotes(dt: number) {
     }
   }
   for (const [id, r] of remotes) {
-    if (!seen.has(id)) { scene.remove(r.group); if (r.sandals) scene.remove(r.sandals); remotes.delete(id) }
+    if (!seen.has(id)) { scene.remove(r.group); if (r.sandals) scene.remove(r.sandals); bubbles.delete(id); remotes.delete(id) }
   }
 }
 function updateCamera(lerpK = 1) {
@@ -320,6 +368,9 @@ function animate() {
   }
 
   syncRemotes(dt) // người chơi khác
+  // hết hạn bong bóng chat
+  const nowMs = performance.now()
+  for (const [id, b] of bubbles) { if (nowMs > b.hideAt) { b.group.remove(b.sprite); bubbles.delete(id) } }
   renderer.render(scene, camera)
 }
 

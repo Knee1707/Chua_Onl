@@ -55,9 +55,7 @@ async function doSignOut() { await signOut(); showGate.value = true }
 
 <template>
   <div class="hh-root">
-    <ClientOnly>
-      <TempleScene3D v-if="!showGate" @interact="onInteract" />
-    </ClientOnly>
+    <TempleScene3D v-if="!showGate" @interact="onInteract" />
 
     <!-- Cổng tài khoản: tự cấp tài khoản để vào chùa -->
     <transition name="fade">
