@@ -206,40 +206,23 @@ function updateCamera(lerpK = 1) {
 
 function startClimb() { phase.value = 'climbing'; climbT = 0 }
 
-function removeSandalsAndEnter() {
-  const pair = makeSandalPair()
+// --- Vạch cam: cởi dép để vào lễ / mang dép để ra về ---
+const barrier = ref<'' | 'coi' | 'mang'>('') // đang bị chặn ở vạch, cần hành động gì
+function doCoiDep() {
   const spot = sandalSpotFor(mp.myId)
-  pair.position.set(spot.x, spot.y, spot.z); pair.rotation.y = -0.4
-  world.root.add(pair); sandalPair = pair
-  sandalsOff.value = true
-  // điểm tương tác "mang dép" khi quay ra
-  const hit = new THREE.Mesh(new THREE.BoxGeometry(2, 1.5, 2), new THREE.MeshBasicMaterial({ visible: false }))
-  hit.position.set(spot.x, spot.y + 0.7, spot.z); world.root.add(hit)
-  world.interactives.push({ object: hit, action: 'sandals', label: '👡 Mang dép', focus: spot.clone() })
-  phase.value = 'inside'
-  avatarPos.set(0, world.floorY, -16); avatarYaw = Math.PI // vào hẳn trong điện
-  cam.yaw = 0; cam.pitch = 0.28
-}
-
-// Bật/tắt: đang đi dép -> Cởi dép (để ngoài); đang chân trần -> Mang dép
-function toggleSandals() {
-  const it = world.interactives.find((x) => x.action === 'sandals')
-  const spot = sandalSpotFor(mp.myId)
-  if (sandalsOff.value) {
-    if (sandalPair) { world.root.remove(sandalPair); sandalPair = null }
-    sandalsOff.value = false
-    if (it) it.label = '👞 Cởi dép'
-    toast.value = '👟 Đã mang dép'
-  } else {
-    if (!sandalPair) {
-      const pair = makeSandalPair()
-      pair.position.set(spot.x, spot.y, spot.z); pair.rotation.y = -0.4
-      world.root.add(pair); sandalPair = pair
-    }
-    sandalsOff.value = true
-    if (it) it.label = '👡 Mang dép'
-    toast.value = '👡 Đã cởi dép để ngoài'
+  if (!sandalPair) {
+    const pair = makeSandalPair()
+    pair.position.set(spot.x, spot.y, spot.z); pair.rotation.y = -0.4
+    world.root.add(pair); sandalPair = pair
   }
+  sandalsOff.value = true; barrier.value = ''
+  toast.value = '👡 Đã cởi dép — mời vào lễ Phật 🙏'
+  setTimeout(() => (toast.value = ''), 2200)
+}
+function doMangDep() {
+  if (sandalPair) { world.root.remove(sandalPair); sandalPair = null }
+  sandalsOff.value = false; barrier.value = ''
+  toast.value = '👞 Đã mang dép — bạn có thể ra về'
   setTimeout(() => (toast.value = ''), 2200)
 }
 
@@ -283,13 +266,12 @@ function pickCenter(): { action: string; label: string } | null {
 
 function doInteract() {
   if (phase.value !== 'inside') return
+  if (barrier.value === 'coi') { doCoiDep(); return }  // vạch cam: cởi dép để vào
+  if (barrier.value === 'mang') { doMangDep(); return } // vạch cam: mang dép để ra
   if (sitting.value) { standUp(); return } // đứng dậy
   if (nearMat) { sitDown(); return } // ngồi quỳ
   const hit = pickCenter()
-  if (hit) {
-    if (hit.action === 'sandals') toggleSandals()
-    else emit('interact', hit.action)
-  }
+  if (hit) emit('interact', hit.action)
 }
 function onClick() {
   if (phase.value !== 'inside') return
@@ -334,7 +316,7 @@ function animate() {
     walkAmt = 1; walkPhase += dt * 9
     cam.yaw = avatarYaw + Math.PI; cam.pitch = 0.22
     placeAvatar(); animateLegs(); updateCamera(0.12)
-    if (climbT >= 1) { phase.value = 'threshold'; avatarPos.set(fullPath[n].x, world.floorY, fullPath[n].z) }
+    if (climbT >= 1) { phase.value = 'inside'; avatarPos.set(fullPath[n].x, world.floorY, fullPath[n].z); cam.yaw = 0; cam.pitch = 0.25 } // tới cổng -> tự điều khiển
   } else if (phase.value === 'inside') {
     const joyOn = Math.abs(joyVec.x) + Math.abs(joyVec.y) > 0.08
     const moving = joyOn || keys['w'] || keys['s'] || keys['a'] || keys['d'] || keys['arrowup'] || keys['arrowdown'] || keys['arrowleft'] || keys['arrowright']
@@ -354,8 +336,14 @@ function animate() {
       if (joyOn) { move.add(right.clone().multiplyScalar(joyVec.x)); move.add(fwd.clone().multiplyScalar(-joyVec.y)) }
       if (move.lengthSq() > 0) {
         move.normalize()
-        avatarPos.x = THREE.MathUtils.clamp(avatarPos.x + move.x * speed, world.bounds.minX, world.bounds.maxX)
-        avatarPos.z = THREE.MathUtils.clamp(avatarPos.z + move.z * speed, world.bounds.minZ, world.bounds.maxZ)
+        const newX = THREE.MathUtils.clamp(avatarPos.x + move.x * speed, world.bounds.minX, world.bounds.maxX)
+        let newZ = THREE.MathUtils.clamp(avatarPos.z + move.z * speed, world.bounds.minZ, world.bounds.maxZ)
+        // VẠCH CAM: vào lễ phải cởi dép, ra về phải mang dép
+        const LZ = world.coiDepZ
+        if (avatarPos.z > LZ && newZ <= LZ && !sandalsOff.value) { newZ = LZ + 0.4; barrier.value = 'coi' }
+        else if (avatarPos.z < LZ && newZ >= LZ && sandalsOff.value) { newZ = LZ - 0.4; barrier.value = 'mang' }
+        else if (barrier.value && Math.abs(newZ - LZ) > 1.6) barrier.value = ''
+        avatarPos.x = newX; avatarPos.z = newZ
         avatarYaw = Math.atan2(move.x, move.z)
         walkAmt = Math.min(1, walkAmt + dt * 6); walkPhase += dt * 10
       } else {
@@ -366,8 +354,10 @@ function animate() {
       // thảm quỳ gần nhất (ưu tiên hiện "Ngồi quỳ" khi đang đứng trên thảm)
       nearMat = null; let bd = 1.6
       for (const m of world.mats) { const d = avatarPos.distanceTo(m); if (d < bd) { bd = d; nearMat = m } }
-      const hit = nearMat ? null : pickCenter()
-      hoverLabel.value = nearMat ? '🧎 Ngồi quỳ' : (hit ? hit.label : '')
+      const hit = (barrier.value || nearMat) ? null : pickCenter()
+      hoverLabel.value = barrier.value === 'coi' ? '👡 Cởi dép để vào lễ — bấm 🙏'
+        : barrier.value === 'mang' ? '👞 Mang dép để ra về — bấm 🙏'
+        : nearMat ? '🧎 Ngồi quỳ' : (hit ? hit.label : '')
       updateCamera(0.2)
     } else {
       placeAvatar(); avatar.position.y = avatarPos.y - 0.5
@@ -504,14 +494,10 @@ function startScene() {
 
   // đường hành hương: cầu thang -> qua cổng -> sân -> thềm đại điện
   const fy = world.floorY + 1.7
+  // Leo núi tự động DỪNG trước cổng tam quan; từ đây người chơi tự điều khiển đi vào
   fullPath = [
     ...world.climbPath,
-    new THREE.Vector3(0, fy, 54), // băng bãi cỏ tới cổng
-    new THREE.Vector3(0, fy, 44), // qua cổng tam quan
-    new THREE.Vector3(0, fy, 28), // sân cột kinh
-    new THREE.Vector3(0, fy, 12),
-    new THREE.Vector3(0, fy, 0),
-    new THREE.Vector3(8, fy, -6)  // tới thềm đại điện
+    new THREE.Vector3(0, fy, 56)
   ]
 
   // nhân vật đứng dưới chân núi; camera ngắm toàn cảnh chùa trên đỉnh núi
@@ -521,8 +507,8 @@ function startScene() {
 
   // lối tắt dev: .../hanh-huong#inside vào thẳng trong chùa
   if (import.meta.dev && location.hash === '#inside') {
-    phase.value = 'inside'; sandalsOff.value = true
-    avatarPos.set(0, world.floorY, -16); avatarYaw = Math.PI
+    phase.value = 'inside'; sandalsOff.value = false // đang đi dép để test vạch cởi dép
+    avatarPos.set(0, world.floorY, 6); avatarYaw = Math.PI
     cam.yaw = 0; cam.pitch = 0.3
   }
 
@@ -570,16 +556,6 @@ defineExpose({ phase })
       </div>
     </transition>
 
-    <!-- Lớp phủ: Cởi dép ở thềm -->
-    <transition name="fade">
-      <div v-if="phase === 'threshold'" class="overlay threshold">
-        <div class="intro-card">
-          <h2>Trước thềm chính điện</h2>
-          <p class="sub">Theo lệ nhà chùa, xin cởi dép để ngoài trước khi vào lễ Phật.</p>
-          <button class="btn-gold" @click="removeSandalsAndEnter">👡 Cởi dép & bước vào</button>
-        </div>
-      </div>
-    </transition>
 
     <!-- HUD khi ở trong chùa -->
     <template v-if="phase === 'inside'">

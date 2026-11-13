@@ -22,6 +22,7 @@ export interface World {
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number }
   sandalSpot: THREE.Vector3
   mats: THREE.Vector3[]
+  coiDepZ: number // vạch cam: qua vạch này (vào lễ) phải cởi dép, ra phải mang dép
 }
 
 // ---- Bảng màu ------------------------------------------------------------
@@ -495,6 +496,12 @@ export function buildWorld(scene: THREE.Scene): World {
   hall.add(box(10, 1.8, 0.3, M.redDark(), 0, HH + 1, fZ + 0.5)); hall.add(box(8.5, 1.1, 0.1, M.gold(), 0, HH + 1, fZ + 0.66))
   hall.position.set(0, floorY, hallZ); root.add(hall)
 
+  // --- VẠCH CAM ở cửa điện (ranh giới cởi dép) ---
+  const coiDepZ = -14
+  const lineMat = new THREE.MeshStandardMaterial({ color: 0xe07a3a, roughness: 0.85 })
+  root.add(box(HW - 4, 0.05, 0.55, lineMat, 0, floorY + 0.19, coiDepZ + 0.55))
+  root.add(box(HW - 4, 0.05, 0.55, lineMat, 0, floorY + 0.19, coiDepZ - 0.55))
+
   const backZ = hallZ - HD / 2
 
   // --- BAN TAM THẾ: 3 tượng lớn + hào quang lá đề + bệ ---
@@ -562,7 +569,7 @@ export function buildWorld(scene: THREE.Scene): World {
     root, updaters, interactives, climbPath,
     bell: { pivot: bell.pivot, swing: bell.swing },
     floorY,
-    bounds: { minX: -25, maxX: 25, minZ: -42, maxZ: 42 },
-    sandalSpot, mats
+    bounds: { minX: -25, maxX: 25, minZ: -42, maxZ: 58 },
+    sandalSpot, mats, coiDepZ
   }
 }
