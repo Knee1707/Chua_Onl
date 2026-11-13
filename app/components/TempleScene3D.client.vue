@@ -217,17 +217,30 @@ function removeSandalsAndEnter() {
   hit.position.set(spot.x, spot.y + 0.7, spot.z); world.root.add(hit)
   world.interactives.push({ object: hit, action: 'sandals', label: '👡 Mang dép', focus: spot.clone() })
   phase.value = 'inside'
-  avatarPos.set(0, world.floorY, -4); avatarYaw = Math.PI
+  avatarPos.set(0, world.floorY, -16); avatarYaw = Math.PI // vào hẳn trong điện
   cam.yaw = 0; cam.pitch = 0.28
 }
 
-function wearSandals() {
-  if (sandalPair) { world.root.remove(sandalPair); sandalPair = null }
-  const i = world.interactives.findIndex((x) => x.action === 'sandals')
-  if (i >= 0) world.interactives.splice(i, 1)
-  sandalsOff.value = false
-  toast.value = '👟 Đã mang dép — bạn có thể rời chùa'
-  setTimeout(() => (toast.value = ''), 2600)
+// Bật/tắt: đang đi dép -> Cởi dép (để ngoài); đang chân trần -> Mang dép
+function toggleSandals() {
+  const it = world.interactives.find((x) => x.action === 'sandals')
+  const spot = sandalSpotFor(mp.myId)
+  if (sandalsOff.value) {
+    if (sandalPair) { world.root.remove(sandalPair); sandalPair = null }
+    sandalsOff.value = false
+    if (it) it.label = '👞 Cởi dép'
+    toast.value = '👟 Đã mang dép'
+  } else {
+    if (!sandalPair) {
+      const pair = makeSandalPair()
+      pair.position.set(spot.x, spot.y, spot.z); pair.rotation.y = -0.4
+      world.root.add(pair); sandalPair = pair
+    }
+    sandalsOff.value = true
+    if (it) it.label = '👡 Mang dép'
+    toast.value = '👡 Đã cởi dép để ngoài'
+  }
+  setTimeout(() => (toast.value = ''), 2200)
 }
 
 // --- Ngồi quỳ trên thảm ---
@@ -274,7 +287,7 @@ function doInteract() {
   if (nearMat) { sitDown(); return } // ngồi quỳ
   const hit = pickCenter()
   if (hit) {
-    if (hit.action === 'sandals') wearSandals()
+    if (hit.action === 'sandals') toggleSandals()
     else emit('interact', hit.action)
   }
 }
@@ -417,9 +430,9 @@ function startScene() {
  try {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
   renderer.setSize(window.innerWidth, window.innerHeight)
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)) // giảm tải GPU trên màn hình nét cao
   renderer.shadowMap.enabled = true
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap
+  renderer.shadowMap.type = THREE.PCFShadowMap
   renderer.toneMapping = THREE.ACESFilmicToneMapping
   renderer.toneMappingExposure = 1.0
 
@@ -460,7 +473,7 @@ function startScene() {
   const sun = new THREE.DirectionalLight(0xfff2d8, 1.25)
   sun.position.set(40, 80, 60)
   sun.castShadow = true
-  sun.shadow.mapSize.set(2048, 2048)
+  sun.shadow.mapSize.set(1024, 1024)
   sun.shadow.camera.near = 10
   sun.shadow.camera.far = 260
   sun.shadow.bias = -0.0004
@@ -479,18 +492,13 @@ function startScene() {
     bare: sandalsOff.value
   }))
 
-  // đèn ấm dịu trong đại điện lớn (nhiều đèn phủ rộng, không cháy trần)
-  for (const lz of [-26, -38, -50]) {
-    const hl = new THREE.PointLight(0xffe0b0, 30, 52, 1.4)
-    hl.position.set(0, world.floorY + 6, lz)
+  // đèn ấm trong đại điện (ít đèn, phủ rộng — giảm tải)
+  for (const lz of [-30, -48]) {
+    const hl = new THREE.PointLight(0xffe0b0, 44, 72, 1.3)
+    hl.position.set(0, world.floorY + 7, lz)
     scene.add(hl)
   }
-  for (const lx of [-18, 18]) {
-    const hl = new THREE.PointLight(0xffe0b0, 18, 42, 1.4)
-    hl.position.set(lx, world.floorY + 6, -34)
-    scene.add(hl)
-  }
-  const yardLight = new THREE.PointLight(0xffe8c0, 16, 44, 1.5)
+  const yardLight = new THREE.PointLight(0xffe8c0, 18, 52, 1.4)
   yardLight.position.set(0, world.floorY + 7, 10)
   scene.add(yardLight)
 
@@ -514,7 +522,7 @@ function startScene() {
   // lối tắt dev: .../hanh-huong#inside vào thẳng trong chùa
   if (import.meta.dev && location.hash === '#inside') {
     phase.value = 'inside'; sandalsOff.value = true
-    avatarPos.set(0, world.floorY, -4); avatarYaw = Math.PI
+    avatarPos.set(0, world.floorY, -16); avatarYaw = Math.PI
     cam.yaw = 0; cam.pitch = 0.3
   }
 

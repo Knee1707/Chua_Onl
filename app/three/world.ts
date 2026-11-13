@@ -226,10 +226,10 @@ function lantern(x: number, y: number, z: number, updaters: World['updaters'], s
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.4, 14, 10), M.lamp()); body.scale.y = 1.15; g.add(body)
   g.add(box(0.5, 0.08, 0.5, M.gold(), 0, 0.46, 0)); g.add(box(0.5, 0.08, 0.5, M.gold(), 0, -0.46, 0))
   const tassel = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.5, 6), M.gold()); tassel.position.y = -0.75; g.add(tassel)
-  const light = new THREE.PointLight(0xff7a45, 5, 8, 2); g.add(light)
+  // bỏ PointLight để nhẹ máy — đèn vẫn phát sáng nhờ vật liệu emissive
   g.position.set(x, y, z); g.scale.setScalar(scale)
   const phase = Math.random() * 6
-  updaters.push((t) => { g.rotation.z = Math.sin(t * 1.3 + phase) * 0.07; light.intensity = 4 + Math.sin(t * 4 + phase) * 1 })
+  updaters.push((t) => { g.rotation.z = Math.sin(t * 1.3 + phase) * 0.07 })
   return g
 }
 
@@ -521,13 +521,21 @@ export function buildWorld(scene: THREE.Scene): World {
   // --- 100 THẢM QUỲ (10 x 10) ---
   const mats: THREE.Vector3[] = []
   const matMat = new THREE.MeshStandardMaterial({ color: 0xb02a22, roughness: 0.95 })
+  // InstancedMesh: 100 thảm + 100 bồ đoàn -> chỉ 2 draw call (nhẹ máy)
+  const matInst = new THREE.InstancedMesh(new THREE.BoxGeometry(1.55, 0.08, 1.95), matMat, 100)
+  const boInst = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.44, 0.49, 0.24, 14), M.cushion(), 100)
+  matInst.receiveShadow = true
+  const matDummy = new THREE.Object3D()
+  let matK = 0
   for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) {
     const mx = (c - 4.5) * 2.9, mz = hallZ + 10 - r * 3.2
-    // đáy thảm floorY+0.24 (cao hơn mặt sàn floorY+0.15) -> hết z-fighting/nháy
-    root.add(box(1.55, 0.08, 1.95, matMat, mx, floorY + 0.28, mz))
-    const bo = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.49, 0.24, 18), M.cushion()); bo.position.set(mx, floorY + 0.44, mz + 0.45); bo.castShadow = true; root.add(bo)
+    matDummy.position.set(mx, floorY + 0.28, mz); matDummy.updateMatrix(); matInst.setMatrixAt(matK, matDummy.matrix)
+    matDummy.position.set(mx, floorY + 0.44, mz + 0.45); matDummy.updateMatrix(); boInst.setMatrixAt(matK, matDummy.matrix)
     mats.push(new THREE.Vector3(mx, floorY, mz + 0.1))
+    matK++
   }
+  matInst.instanceMatrix.needsUpdate = true; boInst.instanceMatrix.needsUpdate = true
+  root.add(matInst, boInst)
 
   // --- Đèn lồng treo trong điện (2 hàng) ---
   for (let r = 0; r < 5; r++) for (const lx of [-16, 16]) root.add(lantern(lx, floorY + HH - 1.5, hallZ - 10 + r * 5, updaters, 1.2))
