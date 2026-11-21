@@ -237,7 +237,7 @@ function setKneel(on: boolean) {
 }
 function sitDown() {
   if (!nearMat) return
-  avatarPos.set(nearMat.x, world.floorY, nearMat.z)
+  avatarPos.set(nearMat.x, nearMat.y, nearMat.z) // thảm ở nền điện (cao hơn sân 1 bậc)
   avatarYaw = Math.PI // quay mặt vào ban thờ
   walkAmt = 0; sitting.value = true
   placeAvatar(); avatar.position.y = avatarPos.y - 0.5; setKneel(true)
@@ -349,7 +349,10 @@ function animate() {
       } else {
         walkAmt = Math.max(0, walkAmt - dt * 6)
       }
-      avatarPos.y = world.floorY
+      // nền trong điện cao hơn sân 1 bậc: lên dốc mượt qua tam cấp ở vạch cam
+      const RAMP = 4.0
+      const tStep = THREE.MathUtils.clamp((world.coiDepZ + RAMP - avatarPos.z) / RAMP, 0, 1)
+      avatarPos.y = world.floorY + world.step * tStep
       placeAvatar(); animateLegs()
       // thảm quỳ gần nhất (ưu tiên hiện "Ngồi quỳ" khi đang đứng trên thảm)
       nearMat = null; let bd = 1.6

@@ -23,6 +23,7 @@ export interface World {
   sandalSpot: THREE.Vector3
   mats: THREE.Vector3[]
   coiDepZ: number // vạch cam: qua vạch này (vào lễ) phải cởi dép, ra phải mang dép
+  step: number    // chênh cao giữa sân ngoài và thềm chùa (nâng 1 bậc)
 }
 
 // ---- Bảng màu ------------------------------------------------------------
@@ -267,16 +268,51 @@ function smokeColumn(x: number, y: number, z: number, updaters: World['updaters'
   return pts
 }
 
-// ---- Lư hương lớn --------------------------------------------------------
-function buildCenser(x: number, y: number, z: number, updaters: World['updaters']) {
+// ---- Đỉnh/Lư hương đồng LỚN (đẹp: 3 chân, tai rồng, vành sen, than hồng) ---
+function buildCenser(x: number, y: number, z: number, updaters: World['updaters'], scale = 1) {
   const g = new THREE.Group()
-  const bowl = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 0.9, 1.3, 24), M.bronze()); bowl.position.y = 1.6
-  const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.8, 1.2, 20), M.bronze()); foot.position.y = 0.6
-  for (let i = -1; i <= 1; i++) {
-    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.0, 6), M.redDark()); stick.position.set(i * 0.28, 3.2, 0)
-    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), M.lamp()); tip.position.set(i * 0.28, 4.2, 0); g.add(stick, tip)
+  // bệ đá bát giác
+  const plinth = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 2.0, 0.5, 8), M.stoneLight()); plinth.position.y = 0.25; plinth.receiveShadow = true; g.add(plinth)
+  g.add(new THREE.Mesh(new THREE.CylinderGeometry(1.45, 1.7, 0.3, 8), M.stone()).translateY(0.6))
+  // thân đỉnh (bụng phình) + cổ
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(1.3, 24, 18), M.bronze()); belly.scale.set(1, 0.82, 1); belly.position.y = 1.9; belly.castShadow = true; g.add(belly)
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(1.08, 1.2, 0.45, 24), M.gold()); neck.position.y = 2.75; g.add(neck)
+  // vành miệng + cánh sen quanh miệng
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(1.12, 0.14, 10, 28), M.gold()); rim.rotation.x = Math.PI / 2; rim.position.y = 3.0; g.add(rim)
+  for (let i = 0; i < 16; i++) {
+    const a = i / 16 * Math.PI * 2
+    const petal = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), M.goldGlow()); petal.scale.set(0.6, 0.35, 1.1)
+    petal.position.set(Math.cos(a) * 1.12, 3.02, Math.sin(a) * 1.12); petal.lookAt(Math.cos(a) * 2, 3.3, Math.sin(a) * 2); g.add(petal)
   }
-  g.add(foot, bowl); g.add(smokeColumn(0, 2.4, 0, updaters, { height: 6 })); g.position.set(x, y, z); g.castShadow = true
+  // than hồng + tro trong lòng đỉnh
+  const ash = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.0, 0.3, 20), new THREE.MeshStandardMaterial({ color: 0x8a8378, roughness: 1 })); ash.position.y = 3.0; g.add(ash)
+  const ember = new THREE.Mesh(new THREE.CircleGeometry(1.0, 20), new THREE.MeshStandardMaterial({ color: 0xff7a3a, emissive: 0xff4a1a, emissiveIntensity: 1.1, roughness: 0.7 })); ember.rotation.x = -Math.PI / 2; ember.position.y = 3.17; g.add(ember)
+  // đai trang trí + huy hiệu sen (mặt trước)
+  const band = new THREE.Mesh(new THREE.TorusGeometry(1.28, 0.08, 8, 28), M.gold()); band.rotation.x = Math.PI / 2; band.position.y = 2.15; g.add(band)
+  const medallion = new THREE.Mesh(new THREE.CircleGeometry(0.5, 20), M.goldGlow()); medallion.position.set(0, 1.95, 1.28); g.add(medallion)
+  // 3 chân quỳ (dáng chân thú)
+  for (let i = 0; i < 3; i++) {
+    const a = i / 3 * Math.PI * 2 + Math.PI / 6
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.26, 1.2, 10), M.bronzeDark())
+    leg.position.set(Math.cos(a) * 1.05, 1.15, Math.sin(a) * 1.05); leg.rotation.z = -Math.cos(a) * 0.22; leg.rotation.x = Math.sin(a) * 0.22; g.add(leg)
+    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8), M.bronzeDark()); paw.scale.set(1, 0.7, 1.2); paw.position.set(Math.cos(a) * 1.18, 0.75, Math.sin(a) * 1.18); g.add(paw)
+  }
+  // 2 tai rồng (quai) 2 bên
+  for (const s of [-1, 1]) {
+    const ear = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.11, 8, 16, Math.PI * 1.1), M.gold())
+    ear.position.set(s * 1.35, 2.5, 0); ear.rotation.y = Math.PI / 2; ear.rotation.z = s * -0.3; g.add(ear)
+  }
+  // bó nhang đang cháy cắm trong đỉnh
+  for (let i = 0; i < 7; i++) {
+    const a = Math.random() * Math.PI * 2, r = Math.random() * 0.5
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.8 + Math.random() * 0.6, 6), M.redDark())
+    stick.position.set(Math.cos(a) * r, 4.0, Math.sin(a) * r); stick.rotation.z = (Math.random() - 0.5) * 0.25; g.add(stick)
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), M.lamp()); tip.position.set(Math.cos(a) * r, 4.9 + Math.random() * 0.3, Math.sin(a) * r); g.add(tip)
+  }
+  g.add(smokeColumn(0, 3.3, 0, updaters, { height: 6.5, count: 110, spread: 0.5, size: 150 }))
+  // đốm than lập loè
+  updaters.push((t) => { (ember.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.85 + Math.sin(t * 3.1) * 0.35 })
+  g.position.set(x, y, z); g.scale.setScalar(scale)
   return g
 }
 
@@ -397,6 +433,9 @@ export function buildWorld(scene: THREE.Scene): World {
   const updaters: World['updaters'] = []
   const interactives: Interactive[] = []
   const floorY = 18
+  const STEP = 1.0          // nâng nền chùa cao hơn sân 1 bậc để tách biệt khuôn viên ngoài
+  const fYin = floorY + STEP // cao độ nền trong điện
+  const coiDepZ = -6        // vạch cam = mép thềm chùa: cởi dép & bước lên bậc
 
   // --- NÚI: đỉnh thật đỡ khu chùa ---
   const MCZ = -20
@@ -460,10 +499,16 @@ export function buildWorld(scene: THREE.Scene): World {
   const drum = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 2.4, 24), M.redDark()); drum.rotation.z = Math.PI / 2; drum.position.set(24, floorY + 2.6, 14); root.add(drum)
   root.add(box(0.3, 3.2, 0.3, M.wood(), 24, floorY + 1.3, 15.6)); root.add(box(0.3, 3.2, 0.3, M.wood(), 24, floorY + 1.3, 12.4))
 
-  // --- Thùng công đức gần cổng ---
-  const meritBox = box(1.6, 2.1, 1.4, M.redDark(), 14, floorY + 1.05, 34)
-  meritBox.add(box(1.7, 0.24, 1.5, M.gold(), 0, 1.1, 0)); meritBox.add(box(0.7, 0.06, 0.18, M.stoneDark(), 0, 1.1, 0)); root.add(meritBox)
-  interactives.push({ object: meritBox, action: 'merit', label: '💛 Cúng dường', focus: new THREE.Vector3(14, floorY + 1.6, 34) })
+  // --- Thùng công đức: đặt GIỮA trục thần đạo cho dễ thấy ---
+  const meritBox = box(1.9, 2.3, 1.6, M.redDark(), 0, floorY + 1.15, 24)
+  meritBox.add(box(2.05, 0.26, 1.75, M.gold(), 0, 1.2, 0))          // nắp vàng
+  meritBox.add(box(0.85, 0.07, 0.2, M.stoneDark(), 0, 1.22, 0))      // khe bỏ tiền
+  meritBox.add(box(1.5, 0.9, 0.06, M.gold(), 0, 0.15, 0.81))         // bảng vàng mặt trước
+  for (const sx of [-1, 1]) meritBox.add(box(0.14, 2.3, 0.14, M.gold(), sx * 0.95, 0, 0.81)) // viền vàng
+  root.add(meritBox)
+  // 2 bệ đá + lọng nhỏ 2 bên cho nổi bật
+  for (const sx of [-1, 1]) root.add(box(0.5, 2.6, 0.5, M.stoneLight(), sx * 2.3, floorY + 1.3, 24))
+  interactives.push({ object: meritBox, action: 'merit', label: '💛 Cúng dường', focus: new THREE.Vector3(0, floorY + 1.6, 28) })
 
   // =========================================================================
   // ĐẠI ĐIỆN đồ sộ — mái 3 tầng, nền gạch, nội thất gỗ, 100 chỗ quỳ
@@ -471,10 +516,9 @@ export function buildWorld(scene: THREE.Scene): World {
   const hallZ = -32, HW = 56, HD = 44, HH = 13
   const fZ = HD / 2 - 2
   const hall = new THREE.Group()
-  // nền gạch cao + bậc đá trước
-  hall.add(box(HW + 8, 2.0, HD + 8, M.brick(), 0, -0.9, 0))
-  hall.add(box(HW, 0.14, HD, M.floor(), 0, 0.08, 0)) // sàn (mặt ~floorY+0.15)
-  for (let s = 0; s < 4; s++) hall.add(box(HW + 10 - s * 2, 0.4, 1.6, s % 2 ? M.stone() : M.stoneLight(), 0, -0.1 - s * 0.45, HD / 2 + 2.2 + s * 1.5))
+  // nền gạch cao (bệ đá đỡ, nâng thềm chùa cao hơn sân)
+  hall.add(box(HW + 8, 2.0 + STEP, HD + 8, M.brick(), 0, -0.9 - STEP / 2, 0))
+  hall.add(box(HW, 0.14, HD, M.floor(), 0, 0.08, 0)) // sàn (mặt ~fYin+0.15)
   // tường (sau + 2 bên), chừa mặt trước mở
   hall.add(box(HW, HH, 0.7, M.wall(), 0, HH / 2, -HD / 2))
   hall.add(box(0.7, HH, HD, M.wall(), -HW / 2, HH / 2, 0)); hall.add(box(0.7, HH, HD, M.wall(), HW / 2, HH / 2, 0))
@@ -494,36 +538,46 @@ export function buildWorld(scene: THREE.Scene): World {
   const r3 = pagodaRoof(HW - 22, HD - 18, 5, M.tileHall()); r3.position.set(0, HH + 14.5, 0); hall.add(r3)
   // biển hoành phi vàng mặt tiền
   hall.add(box(10, 1.8, 0.3, M.redDark(), 0, HH + 1, fZ + 0.5)); hall.add(box(8.5, 1.1, 0.1, M.gold(), 0, HH + 1, fZ + 0.66))
-  hall.position.set(0, floorY, hallZ); root.add(hall)
+  hall.position.set(0, fYin, hallZ); root.add(hall) // nền điện cao hơn sân 1 bậc (STEP)
 
-  // --- VẠCH CAM ở cửa điện (ranh giới cởi dép) ---
-  const coiDepZ = -14
+  // --- TAM CẤP: bậc đá dẫn từ sân lên thềm chùa (tại mép vạch cam) ---
+  for (let s = 0; s < 3; s++) {
+    const lv = STEP * (s + 1) / 3
+    root.add(box(HW + 2 - s * 1.4, lv + 0.14, 1.0, s % 2 ? M.stoneLight() : M.stone(), 0, floorY + lv / 2, coiDepZ + 1.5 + (2 - s) * 1.0))
+  }
+
+  // --- VẠCH CAM ở mép thềm (ranh giới cởi dép & bước lên bậc) ---
   const lineMat = new THREE.MeshStandardMaterial({ color: 0xe07a3a, roughness: 0.85 })
-  root.add(box(HW - 4, 0.05, 0.55, lineMat, 0, floorY + 0.19, coiDepZ + 0.55))
-  root.add(box(HW - 4, 0.05, 0.55, lineMat, 0, floorY + 0.19, coiDepZ - 0.55))
+  root.add(box(HW - 4, 0.05, 0.5, lineMat, 0, floorY + 0.2, coiDepZ + 3.9))         // mép dưới (sân)
+  root.add(box(HW - 4, 0.05, 0.5, lineMat, 0, fYin + 0.18, coiDepZ - 0.4))          // mép trên (thềm)
 
   const backZ = hallZ - HD / 2
 
   // --- BAN TAM THẾ: 3 tượng lớn + hào quang lá đề + bệ ---
-  root.add(box(HW - 6, HH, 0.5, new THREE.MeshStandardMaterial({ color: 0x7a5a2e, metalness: 0.4, roughness: 0.5, emissive: 0x2a1e08, emissiveIntensity: 0.25 }), 0, floorY + HH / 2, backZ + 0.55)) // phông gỗ chạm vàng
-  for (let i = 0; i < 3; i++) { const w = HW - 12 - i * 6, d = 6 - i * 1.3, cy = floorY + 0.6 + i * 1.2, cz = backZ + 4 + i * 0.5; root.add(box(w, 1.2, d, M.redDark(), 0, cy, cz)); root.add(box(w + 0.3, 0.2, d + 0.3, M.gold(), 0, cy + 0.6, cz)) }
-  for (const bx of [-13, 0, 13]) root.add(buildBuddha(bx, floorY + 2.8, backZ + 4.2, bx === 0 ? 1.5 : 1.3))
-  const halo = new THREE.PointLight(0xffdca0, 26, 34, 1.4); halo.position.set(0, floorY + 8, backZ + 6); root.add(halo)
-  root.add(lantern(-20, floorY + 8, backZ + 4, updaters, 1.6)); root.add(lantern(20, floorY + 8, backZ + 4, updaters, 1.6))
+  root.add(box(HW - 6, HH, 0.5, new THREE.MeshStandardMaterial({ color: 0x7a5a2e, metalness: 0.4, roughness: 0.5, emissive: 0x2a1e08, emissiveIntensity: 0.25 }), 0, fYin + HH / 2, backZ + 0.55)) // phông gỗ chạm vàng
+  for (let i = 0; i < 3; i++) { const w = HW - 12 - i * 6, d = 6 - i * 1.3, cy = fYin + 0.6 + i * 1.2, cz = backZ + 4 + i * 0.5; root.add(box(w, 1.2, d, M.redDark(), 0, cy, cz)); root.add(box(w + 0.3, 0.2, d + 0.3, M.gold(), 0, cy + 0.6, cz)) }
+  for (const bx of [-13, 0, 13]) root.add(buildBuddha(bx, fYin + 2.8, backZ + 4.2, bx === 0 ? 1.5 : 1.3))
+  const halo = new THREE.PointLight(0xffdca0, 26, 34, 1.4); halo.position.set(0, fYin + 8, backZ + 6); root.add(halo)
+  root.add(lantern(-20, fYin + 8, backZ + 4, updaters, 1.6)); root.add(lantern(20, fYin + 8, backZ + 4, updaters, 1.6))
 
   // --- HƯƠNG ÁN: khăn đỏ, mâm quả, bình hoa, nến, lư hương ---
   const tableZ = backZ + 13
-  root.add(box(18, 1.6, 2.8, M.woodDark(), 0, floorY + 0.8, tableZ))
-  root.add(box(18.5, 1.3, 0.3, M.red(), 0, floorY + 0.75, tableZ + 1.35)) // khăn phủ đỏ
-  root.add(box(18.4, 0.24, 3.0, M.gold(), 0, floorY + 1.6, tableZ))
-  const topY = floorY + 1.7
+  root.add(box(18, 1.6, 2.8, M.woodDark(), 0, fYin + 0.8, tableZ))
+  root.add(box(18.5, 1.3, 0.3, M.red(), 0, fYin + 0.75, tableZ + 1.35)) // khăn phủ đỏ
+  root.add(box(18.4, 0.24, 3.0, M.gold(), 0, fYin + 1.6, tableZ))
+  const topY = fYin + 1.7
   root.add(fruitTray(-3, topY, tableZ)); root.add(fruitTray(3, topY, tableZ)); root.add(fruitTray(0, topY, tableZ - 0.5))
   root.add(flowerVase(-7, topY, tableZ)); root.add(flowerVase(7, topY, tableZ))
   for (const cx of [-5, 5]) { root.add(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.16, 1.4, 10), M.gold()).translateX(cx).translateY(topY + 0.7).translateZ(tableZ)); const fl = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), M.lamp()); fl.scale.y = 1.7; fl.position.set(cx, topY + 1.5, tableZ); root.add(fl) }
   const urn = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.6, 0.8, 18), M.bronze()); urn.position.set(0, topY + 0.4, tableZ + 0.6); root.add(urn)
   root.add(smokeColumn(0, topY + 0.8, tableZ + 0.6, updaters, { height: 5, count: 80, spread: 0.35 }))
-  const prayerHit = new THREE.Mesh(new THREE.BoxGeometry(19, 2.6, 4), new THREE.MeshBasicMaterial({ visible: false })); prayerHit.position.set(0, floorY + 1.6, tableZ); root.add(prayerHit)
-  interactives.push({ object: prayerHit, action: 'prayer', label: '🙏 Cầu an', focus: new THREE.Vector3(0, floorY + 1.7, tableZ + 3.5) })
+  const prayerHit = new THREE.Mesh(new THREE.BoxGeometry(19, 2.6, 4), new THREE.MeshBasicMaterial({ visible: false })); prayerHit.position.set(0, fYin + 1.6, tableZ); root.add(prayerHit)
+  interactives.push({ object: prayerHit, action: 'prayer', label: '🙏 Cầu an', focus: new THREE.Vector3(0, fYin + 1.7, tableZ + 3.5) })
+
+  // --- ĐỈNH HƯƠNG TRONG ĐIỆN: thắp nhang / cúng ngay trong chùa ---
+  root.add(buildCenser(0, fYin, hallZ + 16, updaters, 0.82))
+  const inCenserHit = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 5, 8), new THREE.MeshBasicMaterial({ visible: false })); inCenserHit.position.set(0, fYin + 2.4, hallZ + 16); root.add(inCenserHit)
+  interactives.push({ object: inCenserHit, action: 'incense', label: '🪔 Thắp nhang trong điện', focus: new THREE.Vector3(0, fYin + 1.7, hallZ + 19) })
 
   // --- 100 THẢM QUỲ (10 x 10) ---
   const mats: THREE.Vector3[] = []
@@ -536,40 +590,40 @@ export function buildWorld(scene: THREE.Scene): World {
   let matK = 0
   for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) {
     const mx = (c - 4.5) * 2.9, mz = hallZ + 10 - r * 3.2
-    matDummy.position.set(mx, floorY + 0.28, mz); matDummy.updateMatrix(); matInst.setMatrixAt(matK, matDummy.matrix)
-    matDummy.position.set(mx, floorY + 0.44, mz + 0.45); matDummy.updateMatrix(); boInst.setMatrixAt(matK, matDummy.matrix)
-    mats.push(new THREE.Vector3(mx, floorY, mz + 0.1))
+    matDummy.position.set(mx, fYin + 0.28, mz); matDummy.updateMatrix(); matInst.setMatrixAt(matK, matDummy.matrix)
+    matDummy.position.set(mx, fYin + 0.44, mz + 0.45); matDummy.updateMatrix(); boInst.setMatrixAt(matK, matDummy.matrix)
+    mats.push(new THREE.Vector3(mx, fYin, mz + 0.1))
     matK++
   }
   matInst.instanceMatrix.needsUpdate = true; boInst.instanceMatrix.needsUpdate = true
   root.add(matInst, boInst)
 
   // --- Đèn lồng treo trong điện (2 hàng) ---
-  for (let r = 0; r < 5; r++) for (const lx of [-16, 16]) root.add(lantern(lx, floorY + HH - 1.5, hallZ - 10 + r * 5, updaters, 1.2))
+  for (let r = 0; r < 5; r++) for (const lx of [-16, 16]) root.add(lantern(lx, fYin + HH - 1.5, hallZ - 10 + r * 5, updaters, 1.2))
 
   // --- Pháp tòa + mõ (tụng kinh) ---
-  root.add(box(5, 1.3, 4, M.woodDark(), 20, floorY + 0.65, hallZ + 6)); root.add(box(5.4, 0.2, 4.4, M.gold(), 20, floorY + 1.35, hallZ + 6))
-  root.add(box(2.2, 1.4, 2.0, M.cushion(), 20, floorY + 2.0, hallZ + 6))
-  root.add(new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), M.woodDark()).translateX(15).translateY(floorY + 1.3).translateZ(hallZ + 8))
-  const sutraHit = new THREE.Mesh(new THREE.BoxGeometry(6, 3, 5), new THREE.MeshBasicMaterial({ visible: false })); sutraHit.position.set(18, floorY + 1.6, hallZ + 7); root.add(sutraHit)
-  interactives.push({ object: sutraHit, action: 'sutra', label: '📿 Tụng kinh / Nghe kinh', focus: new THREE.Vector3(15, floorY + 1.7, hallZ + 10) })
+  root.add(box(5, 1.3, 4, M.woodDark(), 20, fYin + 0.65, hallZ + 6)); root.add(box(5.4, 0.2, 4.4, M.gold(), 20, fYin + 1.35, hallZ + 6))
+  root.add(box(2.2, 1.4, 2.0, M.cushion(), 20, fYin + 2.0, hallZ + 6))
+  root.add(new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), M.woodDark()).translateX(15).translateY(fYin + 1.3).translateZ(hallZ + 8))
+  const sutraHit = new THREE.Mesh(new THREE.BoxGeometry(6, 3, 5), new THREE.MeshBasicMaterial({ visible: false })); sutraHit.position.set(18, fYin + 1.6, hallZ + 7); root.add(sutraHit)
+  interactives.push({ object: sutraHit, action: 'sutra', label: '📿 Tụng kinh / Nghe kinh', focus: new THREE.Vector3(15, fYin + 1.7, hallZ + 10) })
 
   // --- Ống xăm (xin xăm) ---
-  root.add(box(1.3, 1.5, 1.3, M.wood(), -18, floorY + 0.75, hallZ + 8))
-  root.add(new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.47, 1.5, 16), M.bronze()).translateX(-18).translateY(floorY + 2.2).translateZ(hallZ + 8))
-  const fortuneHit = new THREE.Mesh(new THREE.BoxGeometry(2, 3, 2), new THREE.MeshBasicMaterial({ visible: false })); fortuneHit.position.set(-18, floorY + 1.6, hallZ + 8); root.add(fortuneHit)
-  interactives.push({ object: fortuneHit, action: 'fortune', label: '🎋 Xin xăm', focus: new THREE.Vector3(-15, floorY + 1.7, hallZ + 11) })
+  root.add(box(1.3, 1.5, 1.3, M.wood(), -18, fYin + 0.75, hallZ + 8))
+  root.add(new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.47, 1.5, 16), M.bronze()).translateX(-18).translateY(fYin + 2.2).translateZ(hallZ + 8))
+  const fortuneHit = new THREE.Mesh(new THREE.BoxGeometry(2, 3, 2), new THREE.MeshBasicMaterial({ visible: false })); fortuneHit.position.set(-18, fYin + 1.6, hallZ + 8); root.add(fortuneHit)
+  interactives.push({ object: fortuneHit, action: 'fortune', label: '🎋 Xin xăm', focus: new THREE.Vector3(-15, fYin + 1.7, hallZ + 11) })
 
-  const sandalSpot = new THREE.Vector3(16, floorY, hallZ + HD / 2 + 4)
+  const sandalSpot = new THREE.Vector3(16, floorY, coiDepZ + 1.2) // để dép ở chân bậc (sân)
 
-  // Nhãn + vòng sáng cho mọi điểm tương tác
-  for (const it of interactives) { const p = it.object.position; root.add(stationMarker(p.x, floorY, p.z, it.label, floorY + 4.6, updaters)) }
+  // Nhãn + vòng sáng cho mọi điểm tương tác (trong điện cao hơn 1 bậc)
+  for (const it of interactives) { const p = it.object.position; const fy = p.z <= coiDepZ ? fYin : floorY; root.add(stationMarker(p.x, fy, p.z, it.label, fy + 4.6, updaters)) }
 
   return {
     root, updaters, interactives, climbPath,
     bell: { pivot: bell.pivot, swing: bell.swing },
     floorY,
     bounds: { minX: -25, maxX: 25, minZ: -42, maxZ: 58 },
-    sandalSpot, mats, coiDepZ
+    sandalSpot, mats, coiDepZ, step: STEP
   }
 }
