@@ -235,6 +235,17 @@ function lantern(x: number, y: number, z: number, updaters: World['updaters'], s
   return g
 }
 
+// ---- Cột đèn lồng (dọc đường lên & trong sân) ----------------------------
+function lanternPost(x: number, y: number, z: number, updaters: World['updaters'], scale = 1) {
+  const g = new THREE.Group()
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 0.4, 10), M.stone()); base.position.y = 0.2; g.add(base)
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.14, 3.1, 8), M.woodDark()); post.position.y = 1.75; post.castShadow = true; g.add(post)
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.85, 1), M.woodDark()); arm.position.set(0, 3.2, 0.32); g.add(arm)
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), M.gold()); tip.position.y = 3.3; g.add(tip)
+  g.add(lantern(0, 2.75, 0.62, updaters, scale))
+  g.position.set(x, y, z); return g
+}
+
 // ---- Khói nhang mềm (shader points) --------------------------------------
 function smokeColumn(x: number, y: number, z: number, updaters: World['updaters'],
   opts: { count?: number; height?: number; size?: number; color?: number; speed?: number; spread?: number } = {}) {
@@ -478,6 +489,11 @@ export function buildWorld(scene: THREE.Scene): World {
     root.add(pineTree((8 + Math.random() * 4) * s, yy, z + (Math.random() - 0.5) * 4, 0.9 + Math.random() * 0.6))
     if (Math.random() > 0.4) root.add(rock((7 + Math.random() * 3) * -s, yy, z, 0.7 + Math.random()))
   }
+  // cột đèn lồng đỏ ấm cúng dọc 2 bên bậc thang
+  for (let i = 1; i < 12; i += 2) {
+    const t = i / 12, yy = THREE.MathUtils.lerp(-10, floorY, t), z = THREE.MathUtils.lerp(96, 62, t)
+    for (const s of [-1, 1]) root.add(lanternPost(s * 6.6, yy, z, updaters, 1.0))
+  }
 
   // --- CỔNG TAM QUAN hoành tráng ---
   root.add(buildArchGate(floorY, 46))
@@ -486,6 +502,8 @@ export function buildWorld(scene: THREE.Scene): World {
   // --- SÂN NGOÀI: 2 hàng cột kinh + cây cảnh ---
   for (let r = 0; r < 7; r++) { const z = 38 - r * 4.4; for (const x of [-9, -16, 9, 16]) root.add(kinhPillar(x, floorY, z)) }
   for (let r = 0; r < 6; r++) { const z = 38 - r * 5.4; root.add(shrub(-24, floorY, z, 1.3)); root.add(shrub(24, floorY, z, 1.3)); if (r % 2 === 0) { root.add(pineTree(-29, floorY, z, 1.2)); root.add(pineTree(29, floorY, z, 1.2)) } }
+  // đèn lồng đỏ treo trên đầu cột kinh (ấm cúng như sân chùa buổi chiều)
+  for (let r = 0; r < 7; r += 2) { const z = 38 - r * 4.4; for (const x of [-9, 9, -16, 16]) root.add(lantern(x, floorY + 5.3, z, updaters, 1.15)) }
 
   // --- Lư hương lớn giữa sân ---
   root.add(buildCenser(0, floorY, 8, updaters))

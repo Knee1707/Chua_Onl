@@ -98,26 +98,56 @@ let fullPath: THREE.Vector3[] = []
 let climbT = 0
 let sandalPair: THREE.Group | null = null
 
-function buildAvatar(robeColor = 0x5f6f82) {
+// Tiểu tăng / phật tử chibi: đầu to tròn, mặt dễ thương, áo tràng, cà sa, tràng hạt
+function buildAvatar(robeColor = 0xc67b3c) {
   const g = new THREE.Group()
-  const robe = new THREE.MeshStandardMaterial({ color: robeColor, roughness: 0.85 })      // áo tràng
-  const robe2 = new THREE.MeshStandardMaterial({ color: new THREE.Color(robeColor).multiplyScalar(0.82), roughness: 0.85 })
-  const skin = new THREE.MeshStandardMaterial({ color: 0xe8c39e, roughness: 0.7 })
-  const sashM = new THREE.MeshStandardMaterial({ color: 0xd9b24a, roughness: 0.6, metalness: 0.2 })
-  const legM = new THREE.MeshStandardMaterial({ color: 0x3a3330, roughness: 1 })
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.62, 1.5, 16), robe); body.position.y = 1.2; body.castShadow = true
-  const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.66, 0.7, 16), robe2); skirt.position.y = 0.75
-  const shoulders = new THREE.Mesh(new THREE.SphereGeometry(0.44, 14, 12), robe); shoulders.scale.set(1, 0.55, 0.75); shoulders.position.y = 1.9
-  const sash = new THREE.Mesh(new THREE.BoxGeometry(0.55, 1.0, 0.06), sashM); sash.position.set(0, 1.45, 0.4)
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.31, 18, 16), skin); head.position.y = 2.32; head.scale.y = 1.08
-  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.33, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.62), new THREE.MeshStandardMaterial({ color: 0x241f1b, roughness: 1 })); hair.position.y = 2.4
-  const hands = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), skin); hands.scale.set(0.9, 1.3, 0.7); hands.position.set(0, 1.55, 0.42)
-  for (const s of [-1, 1]) {
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.8, 8), robe); arm.position.set(s * 0.28, 1.5, 0.28); arm.rotation.z = s * 0.4; arm.rotation.x = -0.9; g.add(arm)
+  const robe = new THREE.MeshStandardMaterial({ color: robeColor, roughness: 0.92 })        // áo tràng
+  const robeDk = new THREE.MeshStandardMaterial({ color: new THREE.Color(robeColor).multiplyScalar(0.68), roughness: 0.92 })
+  const skin = new THREE.MeshStandardMaterial({ color: 0xf1caa0, roughness: 0.75 })
+  const dark = new THREE.MeshStandardMaterial({ color: 0x2a2320, roughness: 0.55 })
+  const beadM = new THREE.MeshStandardMaterial({ color: 0x5a2d22, roughness: 0.45, metalness: 0.25 })
+  const shoeM = new THREE.MeshStandardMaterial({ color: 0x3e2c20, roughness: 1 })
+  const cheekM = new THREE.MeshStandardMaterial({ color: 0xff8f7e, roughness: 0.85, transparent: true, opacity: 0.55 })
+  const glintM = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x999999, emissiveIntensity: 0.5 })
+
+  // chân ngắn chibi (2 group xoay cho bước đi / quỳ), có hài nhỏ
+  const mkLeg = (sx: number) => {
+    const p = new THREE.Group(); p.position.set(sx, 0.52, 0)
+    const l = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.12, 0.5, 8), robeDk); l.position.y = -0.25; l.castShadow = true
+    const shoe = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), shoeM); shoe.scale.set(1, 0.55, 1.5); shoe.position.set(0, -0.5, 0.07)
+    p.add(l, shoe); return p
   }
-  const mkLeg = (sx: number) => { const p = new THREE.Group(); p.position.set(sx, 0.78, 0); const l = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.1, 0.78, 8), legM); l.position.y = -0.39; l.castShadow = true; p.add(l); return p }
-  const _legL = mkLeg(-0.17), _legR = mkLeg(0.17)
-  g.add(body, skirt, shoulders, sash, head, hair, hands, _legL, _legR)
+  const _legL = mkLeg(-0.18), _legR = mkLeg(0.18)
+
+  // áo tràng: thân dạng chuông tròn mềm
+  const robeBody = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.68, 1.25, 20), robe); robeBody.position.y = 1.0; robeBody.castShadow = true
+  const hem = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.1, 10, 22), robeDk); hem.rotation.x = Math.PI / 2; hem.position.y = 0.4
+  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.5, 0.26, 18), robeDk); collar.position.y = 1.56
+  // tay áo rộng + bàn tay chắp trước ngực
+  for (const s of [-1, 1]) {
+    const sleeve = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.42, 4, 10), robe)
+    sleeve.position.set(s * 0.44, 1.12, 0.1); sleeve.rotation.z = s * 0.55; sleeve.rotation.x = -0.55; g.add(sleeve)
+  }
+  const hands = new THREE.Mesh(new THREE.SphereGeometry(0.18, 14, 10), skin); hands.scale.set(1.25, 0.95, 0.85); hands.position.set(0, 1.2, 0.46)
+  // cà sa (dải vắt chéo vai) + tràng hạt quanh cổ
+  const sash = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 0.07), robeDk); sash.position.set(0.02, 1.12, 0.52); sash.rotation.z = 0.5
+  const beads = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.05, 8, 22), beadM); beads.rotation.x = 1.15; beads.position.set(0, 1.46, 0.14)
+  const tassel = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.22, 6), beadM); tassel.position.set(0, 1.26, 0.34)
+
+  // ĐẦU to tròn (chibi) + tai + mặt dễ thương
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.54, 26, 22), skin); head.position.y = 2.08; head.castShadow = true
+  for (const s of [-1, 1]) { const ear = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), skin); ear.scale.set(0.7, 1, 0.9); ear.position.set(s * 0.52, 2.02, 0.02); g.add(ear) }
+  for (const s of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 14), dark); eye.scale.set(0.78, 1.2, 0.5); eye.position.set(s * 0.19, 2.1, 0.47); g.add(eye)
+    const glint = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), glintM); glint.position.set(s * 0.15, 2.17, 0.51); g.add(glint)
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.03, 0.03), dark); brow.position.set(s * 0.19, 2.26, 0.49); g.add(brow)
+    const cheek = new THREE.Mesh(new THREE.CircleGeometry(0.09, 16), cheekM); cheek.position.set(s * 0.31, 1.97, 0.45); cheek.rotation.y = s * -0.35; g.add(cheek)
+  }
+  const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.018, 6, 12, Math.PI), dark); mouth.rotation.z = Math.PI; mouth.position.set(0, 1.92, 0.49)
+  // nhục kế nhỏ trên đỉnh (gợi hình tượng nhà sư)
+  const top = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), skin); top.position.set(0, 2.56, 0)
+
+  g.add(_legL, _legR, robeBody, hem, collar, hands, sash, beads, tassel, head, mouth, top)
   return { group: g, legL: _legL, legR: _legR }
 }
 
@@ -138,7 +168,7 @@ function makeNameTag(text: string) {
 }
 function colorFromId(id: string) {
   let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) & 0xffff
-  const palette = [0x8a5a3a, 0x4e7a5a, 0x7a4e6d, 0x3a5f7a, 0x7a6a3a, 0x6a4e8a, 0x8a4a4a]
+  const palette = [0xc77f3a, 0xd79a3a, 0x9a6a3a, 0x7a8a5a, 0x4e7a6a, 0xb5543c, 0x8a5a7a, 0xd9b24a]
   return palette[h % palette.length]
 }
 // chỗ để dép riêng cho mỗi người (rải dọc thềm, không chồng nhau)
@@ -430,8 +460,8 @@ function startScene() {
   renderer.toneMappingExposure = 1.0
 
   scene = new THREE.Scene()
-  scene.background = new THREE.Color(0xcfe3ef)
-  scene.fog = new THREE.Fog(0xd7e6ef, 150, 380)
+  scene.background = new THREE.Color(0xe7d3ad)
+  scene.fog = new THREE.Fog(0xe9d6b4, 150, 400)
 
   // bầu trời gradient (vòm)
   const skyGeo = new THREE.SphereGeometry(440, 32, 16)
@@ -439,9 +469,9 @@ function startScene() {
     side: THREE.BackSide,
     depthWrite: false,
     uniforms: {
-      top: { value: new THREE.Color(0x6ea6d6) },
-      mid: { value: new THREE.Color(0xcfe3ef) },
-      bottom: { value: new THREE.Color(0xeee3cf) }
+      top: { value: new THREE.Color(0x7f9fc8) },
+      mid: { value: new THREE.Color(0xeadcc0) },
+      bottom: { value: new THREE.Color(0xf7e3b4) }
     },
     vertexShader: `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
     fragmentShader: `
@@ -461,9 +491,9 @@ function startScene() {
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.3, 1200)
 
   // ánh sáng (dịu, không cháy sáng)
-  const hemi = new THREE.HemisphereLight(0xdce8f0, 0x6a5a48, 0.75)
+  const hemi = new THREE.HemisphereLight(0xf2e3c4, 0x6a4f38, 0.7)
   scene.add(hemi)
-  const sun = new THREE.DirectionalLight(0xfff2d8, 1.25)
+  const sun = new THREE.DirectionalLight(0xffe4b0, 1.3)
   sun.position.set(40, 80, 60)
   sun.castShadow = true
   sun.shadow.mapSize.set(1024, 1024)
@@ -476,7 +506,7 @@ function startScene() {
   scene.add(new THREE.AmbientLight(0xffffff, 0.42))
 
   world = buildWorld(scene)
-  const la = buildAvatar(0x5f6f82); avatar = la.group; legL = la.legL; legR = la.legR; scene.add(avatar)
+  const la = buildAvatar(0xc77f3a); avatar = la.group; legL = la.legL; legR = la.legR; scene.add(avatar)
 
   // --- Multiplayer: kết nối & phát vị trí của mình ---
   mp.connect(() => ({
