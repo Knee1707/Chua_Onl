@@ -36,6 +36,8 @@ async function release() {
     addLantern()
     track('wish')
     award(20, 'thả đèn nguyện')
+    // thả thêm 1 hoa đăng trôi trên hồ 3D
+    try { window.dispatchEvent(new CustomEvent('dco-wish-released')) } catch {}
   } finally {
     window.setTimeout(() => {
       flying.value = false

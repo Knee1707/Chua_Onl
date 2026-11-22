@@ -24,6 +24,7 @@ export interface World {
   mats: THREE.Vector3[]
   coiDepZ: number // vạch cam: qua vạch này (vào lễ) phải cởi dép, ra phải mang dép
   step: number    // chênh cao giữa sân ngoài và thềm chùa (nâng 1 bậc)
+  releaseLantern?: () => void // thả thêm 1 hoa đăng xuống hồ (khi người chơi thả đèn nguyện)
 }
 
 // ---- Bảng màu ------------------------------------------------------------
@@ -244,6 +245,74 @@ function lanternPost(x: number, y: number, z: number, updaters: World['updaters'
   const tip = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), M.gold()); tip.position.y = 3.3; g.add(tip)
   g.add(lantern(0, 2.75, 0.62, updaters, scale))
   g.position.set(x, y, z); return g
+}
+
+// ---- Đèn đá sân vườn (thạch đăng) ----------------------------------------
+function stoneLantern(x: number, y: number, z: number, updaters: World['updaters'], scale = 1) {
+  const g = new THREE.Group()
+  g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.66, 0.4, 6), M.stoneDark()).translateY(0.2))
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 1.5, 6), M.stoneLight()); post.position.y = 1.15; post.castShadow = true; g.add(post)
+  g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.4, 0.28, 6), M.stone()).translateY(2.0))
+  const light = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), new THREE.MeshStandardMaterial({ color: 0xffd98a, emissive: 0xffa94a, emissiveIntensity: 1.0, roughness: 0.6 })); light.position.y = 2.5; g.add(light)
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.72, 0.5, 6), M.stoneDark()); roof.position.y = 3.05; g.add(roof)
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), M.stoneLight()).translateY(3.42))
+  const lm = light.material as THREE.MeshStandardMaterial
+  updaters.push((t) => { lm.emissiveIntensity = 0.8 + Math.sin(t * 2 + x) * 0.2 })
+  g.position.set(x, y, z); g.scale.setScalar(scale); return g
+}
+
+// ---- Hoa đăng trôi trên hồ -----------------------------------------------
+function floatingLantern(x: number, z: number, waterY: number, updaters: World['updaters']) {
+  const g = new THREE.Group()
+  const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.1, 0.12, 10), new THREE.MeshStandardMaterial({ color: 0xffe3b0, emissive: 0xff8a3a, emissiveIntensity: 0.5, roughness: 0.7 })); cup.position.y = 0.08; g.add(cup)
+  const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.26, 10, 1, true), new THREE.MeshStandardMaterial({ color: 0xff9bb0, emissive: 0xc24a66, emissiveIntensity: 0.35, roughness: 0.85, side: THREE.DoubleSide })); skirt.position.y = 0.14; g.add(skirt)
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.2, 8), new THREE.MeshStandardMaterial({ color: 0xffd36a, emissive: 0xff9a2a, emissiveIntensity: 1.4 })); flame.position.y = 0.27; g.add(flame)
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffb860, transparent: true, opacity: 0.45, depthWrite: false })); glow.position.y = 0.2; g.add(glow)
+  const phase = Math.random() * 6.28, rad = 0.35 + Math.random() * 0.5, spd = 0.06 + Math.random() * 0.06, cx = x, cz = z
+  g.position.set(x, waterY, z)
+  const fm = flame.material as THREE.MeshStandardMaterial, gm = glow.material as THREE.MeshBasicMaterial
+  updaters.push((t) => {
+    g.position.x = cx + Math.sin(t * spd + phase) * rad
+    g.position.z = cz + Math.cos(t * spd * 0.8 + phase) * rad
+    g.position.y = waterY + 0.02 + Math.sin(t * 1.4 + phase) * 0.03
+    g.rotation.y = t * 0.2 + phase
+    fm.emissiveIntensity = 1.1 + Math.sin(t * 8 + phase) * 0.4
+    gm.opacity = 0.34 + Math.sin(t * 8 + phase) * 0.12
+  })
+  return g
+}
+
+// ---- Hồ sen: bờ đá, lá sen, hoa đăng trôi --------------------------------
+function buildPond(cx: number, cz: number, rx: number, rz: number, groundY: number, updaters: World['updaters']) {
+  const g = new THREE.Group(); g.position.set(cx, 0, cz)
+  const waterY = groundY + 0.1
+  // đáy hồ tối (chiều sâu) + mặt nước trong
+  const bed = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshStandardMaterial({ color: 0x14303c, roughness: 1 })); bed.rotation.x = -Math.PI / 2; bed.scale.set(rx, rz, 1); bed.position.y = groundY + 0.06; g.add(bed)
+  const water = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshStandardMaterial({ color: 0x2b5a74, metalness: 0.5, roughness: 0.12, transparent: true, opacity: 0.82, emissive: 0x0b2a38, emissiveIntensity: 0.3 })); water.rotation.x = -Math.PI / 2; water.scale.set(rx, rz, 1); water.position.y = waterY; water.receiveShadow = true; g.add(water)
+  // bờ đá (vành khối đá quanh hồ)
+  const curbN = 30
+  for (let i = 0; i < curbN; i++) {
+    const a = i / curbN * Math.PI * 2
+    const curb = box(0.8, 0.5, 0.55, i % 2 ? M.stoneLight() : M.stone(), Math.cos(a) * rx, groundY + 0.26, Math.sin(a) * rz)
+    curb.rotation.y = -a; g.add(curb)
+  }
+  // vài tảng đá & lá sen, hoa sen
+  for (let i = 0; i < 4; i++) { const a = Math.random() * Math.PI * 2; g.add(rock(Math.cos(a) * rx * 1.04, groundY + 0.1, Math.sin(a) * rz * 1.04, 0.45 + Math.random() * 0.3)) }
+  for (let i = 0; i < 9; i++) {
+    const a = Math.random() * Math.PI * 2, rr = Math.random() * 0.76
+    const px = Math.cos(a) * rx * rr, pz = Math.sin(a) * rz * rr
+    const pad = new THREE.Mesh(new THREE.CircleGeometry(0.3 + Math.random() * 0.22, 12), new THREE.MeshStandardMaterial({ color: 0x3f7a43, roughness: 0.9 })); pad.rotation.x = -Math.PI / 2; pad.position.set(px, waterY + 0.015, pz); g.add(pad)
+    if (Math.random() > 0.5) { const fl = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.24, 8, 1, true), new THREE.MeshStandardMaterial({ color: 0xffb7c8, roughness: 0.8, side: THREE.DoubleSide })); fl.position.set(px + 0.08, waterY + 0.13, pz); g.add(fl) }
+  }
+  // gợn sóng loang
+  const ripples: THREE.Mesh[] = []
+  for (let i = 0; i < 3; i++) { const rp = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.02, 6, 32), new THREE.MeshBasicMaterial({ color: 0x9fd0e0, transparent: true, opacity: 0.4, depthWrite: false })); rp.rotation.x = -Math.PI / 2; rp.position.y = waterY + 0.012; g.add(rp); ripples.push(rp) }
+  const minR = Math.min(rx, rz)
+  updaters.push((t) => { ripples.forEach((rp, i) => { const k = (t * 0.22 + i / 3) % 1; const s = 0.3 + k * minR * 1.5; rp.scale.set(s, s, 1); (rp.material as THREE.MeshBasicMaterial).opacity = 0.4 * (1 - k) }) })
+  // hoa đăng cộng đồng ban đầu + hàm thả thêm
+  function addLantern() { const a = Math.random() * Math.PI * 2, rr = 0.2 + Math.random() * 0.58; g.add(floatingLantern(Math.cos(a) * rx * rr, Math.sin(a) * rz * rr, waterY, updaters)) }
+  for (let i = 0; i < 10; i++) addLantern()
+  return { group: g, waterY, addLantern }
 }
 
 // ---- Khói nhang mềm (shader points) --------------------------------------
@@ -499,11 +568,32 @@ export function buildWorld(scene: THREE.Scene): World {
   root.add(buildArchGate(floorY, 46))
   root.add(lantern(-12, floorY + 9, 46, updaters, 1.3)); root.add(lantern(12, floorY + 9, 46, updaters, 1.3))
 
-  // --- SÂN NGOÀI: 2 hàng cột kinh + cây cảnh ---
-  for (let r = 0; r < 7; r++) { const z = 38 - r * 4.4; for (const x of [-9, -16, 9, 16]) root.add(kinhPillar(x, floorY, z)) }
-  for (let r = 0; r < 6; r++) { const z = 38 - r * 5.4; root.add(shrub(-24, floorY, z, 1.3)); root.add(shrub(24, floorY, z, 1.3)); if (r % 2 === 0) { root.add(pineTree(-29, floorY, z, 1.2)); root.add(pineTree(29, floorY, z, 1.2)) } }
-  // đèn lồng đỏ treo trên đầu cột kinh (ấm cúng như sân chùa buổi chiều)
-  for (let r = 0; r < 7; r += 2) { const z = 38 - r * 4.4; for (const x of [-9, 9, -16, 16]) root.add(lantern(x, floorY + 5.3, z, updaters, 1.15)) }
+  // --- SÂN NGOÀI (thiết kế lại theo chuaonline.org): thảm cỏ 2 bên thần đạo,
+  //     đèn lồng + đèn đá ấm cúng, hồ sen thả hoa đăng bên trái, vườn đá bên phải ---
+  // thảm cỏ hai bên lối chính (thần đạo đá ở giữa x∈[-5,5])
+  for (const sx of [-1, 1]) root.add(box(19, 0.06, 50, M.grass(), sx * 15.5, floorY + 0.04, 17))
+  // vài cột kinh gần cổng làm điểm nhấn
+  for (const x of [-9, 9, -16, 16]) root.add(kinhPillar(x, floorY, 40))
+  // cột đèn lồng đỏ dọc hai mép thần đạo (cozy buổi chiều)
+  for (let z = 36; z >= -2; z -= 7) for (const sx of [-1, 1]) root.add(lanternPost(sx * 6, floorY, z, updaters, 1.0))
+  // đèn đá rải trên thảm cỏ
+  for (const [lx, lz] of [[-23, 36], [23, 36], [-23, 6], [23, 6], [-21, 20]] as const) root.add(stoneLantern(lx, floorY, lz, updaters))
+
+  // --- HỒ SEN + bến thả hoa đăng (bên trái sân) ---
+  const pond = buildPond(-14, 27, 7, 6, floorY, updaters); root.add(pond.group)
+  // bến gỗ nhô ra mép hồ (chỗ đứng thả đèn)
+  root.add(box(3.4, 0.2, 1.8, M.wood(), -7.3, floorY + 0.12, 27))
+  for (const jz of [26.2, 27.8]) for (const jx of [-9, -6]) root.add(box(0.14, 0.55, 0.14, M.woodDark(), jx, floorY + 0.28, jz))
+  root.add(box(0.5, 0.34, 0.5, M.redDark(), -6.2, floorY + 0.37, 27)) // chồng hoa đăng chờ thả
+  const wishHit = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.8, 2.4), new THREE.MeshBasicMaterial({ visible: false })); wishHit.position.set(-7.3, floorY + 1.3, 27); root.add(wishHit)
+  interactives.push({ object: wishHit, action: 'wish', label: '🏮 Thả đèn nguyện', focus: new THREE.Vector3(-4, floorY + 1.6, 27) })
+
+  // --- VƯỜN ĐÁ + cây xanh (bên phải, cân với hồ sen) ---
+  root.add(pineTree(16, floorY, 27, 2.3))
+  for (const [gx, gz, gs] of [[13, 31, 1.0], [20, 25, 0.8], [18, 29, 0.6], [22, 30, 0.7]] as const) root.add(rock(gx, floorY + 0.2, gz, gs))
+  for (const [bx, bz] of [[13, 23], [21, 32], [22, 21], [14, 33]] as const) root.add(shrub(bx, floorY, bz, 1.1))
+  // bụi cây mềm & thông quanh rìa sân
+  for (const sx of [-1, 1]) { root.add(shrub(sx * 25, floorY, -2, 1.3)); root.add(pineTree(sx * 30, floorY, 3, 1.2)); root.add(pineTree(sx * 30, floorY, 40, 1.3)) }
 
   // --- Lư hương lớn giữa sân ---
   root.add(buildCenser(0, floorY, 8, updaters))
@@ -642,6 +732,7 @@ export function buildWorld(scene: THREE.Scene): World {
     bell: { pivot: bell.pivot, swing: bell.swing },
     floorY,
     bounds: { minX: -25, maxX: 25, minZ: -42, maxZ: 58 },
-    sandalSpot, mats, coiDepZ, step: STEP
+    sandalSpot, mats, coiDepZ, step: STEP,
+    releaseLantern: () => pond.addLantern()
   }
 }

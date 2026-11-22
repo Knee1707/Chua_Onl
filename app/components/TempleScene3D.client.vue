@@ -97,6 +97,7 @@ let lastY = 0
 let fullPath: THREE.Vector3[] = []
 let climbT = 0
 let sandalPair: THREE.Group | null = null
+let onWishReleased: (() => void) | null = null
 
 // Tiểu tăng / phật tử chibi: đầu to tròn, mặt dễ thương, áo tràng, cà sa, tràng hạt
 function buildAvatar(robeColor = 0xc67b3c) {
@@ -552,6 +553,9 @@ function startScene() {
   window.addEventListener('resize', onResize)
   window.addEventListener('keydown', (e) => onKey(e, true))
   window.addEventListener('keyup', (e) => onKey(e, false))
+  // thả đèn nguyện (từ bảng 2D) -> thêm 1 hoa đăng trôi trên hồ
+  onWishReleased = () => { try { world.releaseLantern?.() } catch {} }
+  window.addEventListener('dco-wish-released', onWishReleased)
   animate()
  } catch (e: any) {
   console.error('[3D] init failed:', e && e.message, '\n', e && e.stack)
@@ -562,6 +566,7 @@ onMounted(startScene)
 onBeforeUnmount(() => {
   cancelAnimationFrame(raf)
   window.removeEventListener('resize', onResize)
+  if (onWishReleased) window.removeEventListener('dco-wish-released', onWishReleased)
   mp.disconnect()
   renderer?.dispose()
 })
